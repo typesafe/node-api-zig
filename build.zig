@@ -4,7 +4,7 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const mod = b.addModule("node-api", .{
+    const node_api = b.addModule("node-api", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
@@ -13,8 +13,13 @@ pub fn build(b: *std.Build) void {
     const sample_addon = b.addLibrary(.{
         .linkage = .dynamic,
         .name = "sample-addon",
-        .root_module = mod,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/sample-addon.zig"),
+            .optimize = optimize,
+            .target = target,
+        }),
     });
+    sample_addon.root_module.addImport("node-api", node_api);
 
     const install_step = b.getInstallStep();
 
