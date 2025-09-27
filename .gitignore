@@ -1,3 +1,6 @@
+tmp
 .zig-cache/
 zig-out/
 *.o
+
+tests/node_modules/sample/sample-addon.node
