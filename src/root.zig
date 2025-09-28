@@ -1,13 +1,23 @@
 const std = @import("std");
 
-pub const InitFunction = fn () void;
+const c = @import("c.zig").c;
+pub const Node = @import("Node.zig");
+
+pub const InitFunction = fn (ctx: Node.NodeContext) anyerror!Node.NodeValue;
 
 pub fn register(comptime init: InitFunction) void {
-    const mod = struct {
-        pub fn napi_register_module_v1() callconv(.c) void {
-            init();
+    const module = opaque {
+        pub fn napi_register_module_v1(env: c.napi_env, _: c.napi_value) callconv(.c) c.napi_value {
+            const node = Node.NodeContext{ .napi_env = env };
+            const exp = init(node) catch {
+                // node.throwError("failed to initialize native Zig module") catch {
+                @panic("failed to throw error after failed module init");
+                // };
+            };
+
+            return exp.napi_value;
         }
     };
 
-    @export(&mod.napi_register_module_v1, .{ .name = "napi_register_module_v1" });
+    @export(&module.napi_register_module_v1, .{ .name = "napi_register_module_v1" });
 }

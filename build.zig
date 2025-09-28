@@ -28,6 +28,9 @@ pub fn build(b: *std.Build) void {
     });
     sample_addon.root_module.addImport("node-api", node_api);
 
+    // important
+    sample_addon.linker_allow_shlib_undefined = true;
+
     const install_step = b.getInstallStep();
 
     install_step.dependOn(
