@@ -10,6 +10,13 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const node_api_headers = b.dependency("node_api_headers", .{
+        .optimize = optimize,
+        .target = target,
+    });
+
+    node_api.addSystemIncludePath(node_api_headers.path("include"));
+
     const sample_addon = b.addLibrary(.{
         .linkage = .dynamic,
         .name = "sample-addon",
