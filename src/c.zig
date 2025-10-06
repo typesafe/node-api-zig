@@ -9,6 +9,7 @@ pub fn statusToError(status: c_uint) NodeApiError!void {
     if (v == NapiStatusValue.ok) {
         return;
     }
+
     return switch (v) {
         NapiStatusValue.invalid_arg => NodeApiError.InvalidArg,
         NapiStatusValue.object_expected => NodeApiError.ObjectExpected,

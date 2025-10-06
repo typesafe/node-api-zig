@@ -1,10 +1,14 @@
 const std = @import("std");
 
 const c = @import("c.zig").c;
-pub const Node = @import("Node.zig");
 const Serializer = @import("Serializer.zig");
 
+/// Represents a Node VM Context.
+pub const Node = @import("Node.zig");
+
+/// Represents a Node value.
 pub const NodeValue = Serializer.NodeValue;
+
 /// The InitFunction to pass to the `register` method. The `ctx` parameter
 /// represents the Node context. The returned value becomes the `exports` value
 /// of the JS module.
