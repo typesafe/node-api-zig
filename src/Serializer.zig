@@ -1,16 +1,61 @@
 const std = @import("std");
 const lib = @import("c.zig");
 const c = lib.c;
-const NodeApiError = lib.NodeApiError;
 const s2e = lib.statusToError;
 
 const Self = @This();
 
 napi_env: c.napi_env,
 
+pub const NodeValueType = enum {
+    Undefined,
+    Null,
+    Boolean,
+    Number,
+    String,
+    Symbol,
+    Object,
+    Function,
+    External,
+    BigInt,
+};
+
+// napi_int8_array,
+// napi_uint8_array,
+// napi_uint8_clamped_array,
+// napi_int16_array,
+// napi_uint16_array,
+// napi_int32_array,
+// napi_uint32_array,
+// napi_float32_array,
+// napi_float64_array,
+// napi_bigint64_array,
+// napi_biguint64_array,
+
 pub const NodeValue = struct {
+    const Self = @This();
+
     napi_env: c.napi_env,
     napi_value: c.napi_value,
+
+    pub fn typeof(self: NodeValue.Self) !NodeValueType {
+        var result: c.napi_valuetype = undefined;
+        try s2e(c.napi_typeof(self.napi_env, self.napi_env, &result));
+
+        return switch (result) {
+            c.napi_undefined => NodeValueType.Undefined,
+            c.napi_null => NodeValueType.Null,
+            c.napi_boolean => NodeValueType.Boolean,
+            c.napi_number => NodeValueType.Number,
+            c.napi_string => NodeValueType.String,
+            c.napi_symbol => NodeValueType.Symbol,
+            c.napi_object => NodeValueType.Object,
+            c.napi_function => NodeValueType.Function,
+            c.napi_external => NodeValueType.External,
+            c.napi_bigint => NodeValueType.BigInt,
+            else => return error.UnknownType,
+        };
+    }
 };
 
 pub fn serialize(self: Self, value: anytype) !c.napi_value {
@@ -49,9 +94,9 @@ pub fn serialize(self: Self, value: anytype) !c.napi_value {
                 try s2e(c.napi_get_value_int32(self.napi_env, @intFromEnum(value), &res));
             }
         },
-        .optional => |o| {
-            if (o) |v| {
-                return self.serialize(v);
+        .optional => {
+            if (value) |val| {
+                return self.serialize(val);
             } else {
                 try s2e(c.napi_get_null(self.napi_env, &res));
             }
@@ -136,4 +181,74 @@ pub fn serialize(self: Self, value: anytype) !c.napi_value {
     }
 
     return res;
+}
+
+pub fn deserializeString(self: Self, value: c.napi_value, allocator: std.mem.Allocator) ![]const u8 {
+    var len: usize = undefined;
+    try s2e(c.napi_get_value_string_latin1(self.napi_env, value, null, 0, &len));
+    const buf = try allocator.allocSentinel(u8, len, 0);
+    try s2e(c.napi_get_value_string_latin1(self.napi_env, value, buf, len + 1, &len));
+    return buf;
+}
+
+// pub fn deserializeStruct(self: Self, comptime T: type, value: c.napi_value, allocator: std.mem.Allocator) ![]const u8 {
+//     const info = @typeInfo(T);
+//     if (info.@"struct") |s| {
+//         var result = allocator.create(T);
+//         for (s.fields) |f| {
+//             var v: c.napi_value = undefined;
+//             try s2e(c.napi_get_property(self.napi_env, value, "", &v));
+//             @field(result, f.name) = self.deserializeValue(f.type, v);
+//         }
+//         return result;
+//     }
+//     @compileError(std.fmt.comptimePrint("Cannot deserialize value of type {s}. Please specify a struct.", .{@typeName(T)}));
+// }
+
+pub fn deserializeValue(self: Self, comptime T: type, value: c.napi_value) !T {
+    const info = @typeInfo(T);
+
+    var v: T = undefined;
+    switch (info) {
+        .bool => try s2e(c.napi_get_value_bool(self.napi_env, value, &v)),
+        .int => |i| {
+            if (i.signedness == .signed) {
+                switch (i.bits) {
+                    32 => try s2e(c.napi_get_value_int32(self.napi_env, value, &v)),
+                    64 => try s2e(c.napi_get_value_int64(self.napi_env, value, &v)),
+                    // 64 => .{ comptime_int, c.napi_get_value_int64 },
+                    else => @compileError(std.fmt.comptimePrint("Cannot deserialize value of type {s}", .{@typeName(T)})),
+                }
+            } else {
+                switch (i.bits) {
+                    // 32 => .{ comptime_int, c.napi_get_value_uint32 },
+                    else => @compileError(std.fmt.comptimePrint("Cannot deserialize value of type {s}", .{@typeName(T)})),
+                }
+            }
+        },
+
+        else => @compileError(std.fmt.comptimePrint("Cannot deserialize value of type {s}", .{@typeName(T)})),
+    }
+
+    return v;
+
+    // return switch (info) {
+    //     .bool => {
+    //         var b: bool = undefined;
+    //         try s2e(c.napi_get_value_bool(self.napi_env, value, &b));
+    //         return b;
+    //     },
+    //     .i32 => {
+    //         var v: i32 = undefined;
+    //         try s2e(c.napi_get_value_int32(self.napi_env, value, &v));
+    //         return v;
+    //     },
+    //     .i64 => {
+    //         var v: i64 = undefined;
+    //         try s2e(c.napi_get_value_int64(self.napi_env, value, &v));
+    //         return v;
+    //     },
+
+    //     else => @compileError(std.fmt.comptimePrint("Cannot deserialize value of type {s}", .{@typeName(T)})),
+    // };
 }
