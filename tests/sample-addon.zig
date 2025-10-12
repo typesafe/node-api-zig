@@ -19,6 +19,8 @@ fn init(node: node_api.Node.NodeContext) !?node_api.NodeValue {
     const v = try node.serialize(.{
         .fun2 = try node.createFunction(2, testFunc2),
         .fun = try node.createFunction(0, testFunc),
+        // .afun = try node.createAsyncFunction(0, testFunc),
+        .nfun = try node.createFunc(testFuncNative2),
         .s = s,
         .x = x,
         .b = b,
@@ -55,6 +57,13 @@ fn testFunc2(node: node_api.Node.NodeContext, args: [2]node_api.NodeValue, thiz:
 
     return try node.serialize(.{ .msg = "Fucking hell!", .thiz = thiz });
 }
-fn testFunc(node: node_api.Node.NodeContext, thiz: ?node_api.NodeValue) !?node_api.NodeValue {
-    return try node.serialize(.{ .msg = "Fucking hell!", .thiz = thiz });
+fn testFunc(node: node_api.Node.NodeContext, _: ?node_api.NodeValue) !?node_api.NodeValue {
+    std.log.info("ZIG FUNCTION testFunc", .{});
+    return try node.serialize(.{ .msg = "Fucking hell!" });
+}
+
+fn testFuncNative2(i: i32, b: bool) !i32 {
+    std.log.debug("calling zig testFuncNative2 {any} {any}", .{ i, b });
+
+    return 456;
 }
