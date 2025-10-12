@@ -2,63 +2,10 @@ const std = @import("std");
 const lib = @import("c.zig");
 const c = lib.c;
 const s2e = lib.statusToError;
+const NodeValue = @import("node_values.zig").NodeValue;
 
-const Self = @This();
-
-napi_env: c.napi_env,
-
-pub const NodeValueType = enum {
-    Undefined,
-    Null,
-    Boolean,
-    Number,
-    String,
-    Symbol,
-    Object,
-    Function,
-    External,
-    BigInt,
-};
-
-// napi_int8_array,
-// napi_uint8_array,
-// napi_uint8_clamped_array,
-// napi_int16_array,
-// napi_uint16_array,
-// napi_int32_array,
-// napi_uint32_array,
-// napi_float32_array,
-// napi_float64_array,
-// napi_bigint64_array,
-// napi_biguint64_array,
-
-pub const NodeValue = struct {
-    const Self = @This();
-
-    napi_env: c.napi_env,
-    napi_value: c.napi_value,
-
-    pub fn typeof(self: NodeValue.Self) !NodeValueType {
-        var result: c.napi_valuetype = undefined;
-        try s2e(c.napi_typeof(self.napi_env, self.napi_env, &result));
-
-        return switch (result) {
-            c.napi_undefined => NodeValueType.Undefined,
-            c.napi_null => NodeValueType.Null,
-            c.napi_boolean => NodeValueType.Boolean,
-            c.napi_number => NodeValueType.Number,
-            c.napi_string => NodeValueType.String,
-            c.napi_symbol => NodeValueType.Symbol,
-            c.napi_object => NodeValueType.Object,
-            c.napi_function => NodeValueType.Function,
-            c.napi_external => NodeValueType.External,
-            c.napi_bigint => NodeValueType.BigInt,
-            else => return error.UnknownType,
-        };
-    }
-};
-
-pub fn serialize(self: Self, value: anytype) !c.napi_value {
+/// Converts a Zig value to a Node-API value.
+pub fn serialize(env: c.napi_env, value: anytype) !c.napi_value {
     const T = @TypeOf(value);
 
     if (T == NodeValue) {
@@ -70,51 +17,51 @@ pub fn serialize(self: Self, value: anytype) !c.napi_value {
     var res: c.napi_value = undefined;
 
     switch (info) {
-        .null => try s2e(c.napi_get_null(self.napi_env, &res)),
-        .undefined => try s2e(c.napi_get_undefined(self.napi_env, &res)),
-        .bool => try s2e(c.napi_get_boolean(self.napi_env, value, &res)),
+        .null => try s2e(c.napi_get_null(env, &res)),
+        .undefined => try s2e(c.napi_get_undefined(env, &res)),
+        .bool => try s2e(c.napi_get_boolean(env, value, &res)),
         .comptime_int => {
-            try s2e(c.napi_create_int32(self.napi_env, value, &res));
+            try s2e(c.napi_create_int32(env, value, &res));
         },
         .int => |i| {
             if (i.signedness == .signed) {
-                try s2e(c.napi_create_int32(self.napi_env, value, &res));
+                try s2e(c.napi_create_int32(env, value, &res));
             } else {
-                try s2e(c.napi_create_uint32(self.napi_env, value, &res));
+                try s2e(c.napi_create_uint32(env, value, &res));
             }
         },
-        .float, .comptime_float => try s2e(c.napi_create_double(self.napi_env, value, &res)),
+        .float, .comptime_float => try s2e(c.napi_create_double(env, value, &res)),
 
         .@"enum" => |i| {
             // if enum has consistently named tags -> prefer tag name as string
             if (i.tag_type == u0 or i.is_exhaustive) {
                 const name = @tagName(value);
-                try s2e(c.napi_create_string_utf8(self.napi_env, name, name.len, &res));
+                try s2e(c.napi_create_string_utf8(env, name, name.len, &res));
             } else {
-                try s2e(c.napi_get_value_int32(self.napi_env, @intFromEnum(value), &res));
+                try s2e(c.napi_get_value_int32(env, @intFromEnum(value), &res));
             }
         },
         .optional => {
             if (value) |val| {
-                return self.serialize(val);
+                return serialize(env, val);
             } else {
-                try s2e(c.napi_get_null(self.napi_env, &res));
+                try s2e(c.napi_get_null(env, &res));
             }
         },
         .pointer => |p| {
             switch (p.size) {
                 .one => {
-                    return self.serialize(value.*);
+                    return serialize(env, value.*);
                 },
                 .slice => {
                     if (p.child == u8 and p.is_const) {
-                        try s2e(c.napi_create_string_utf8(self.napi_env, value.ptr, value.len, &res));
+                        try s2e(c.napi_create_string_utf8(env, value.ptr, value.len, &res));
                     } else {
-                        try s2e(c.napi_create_array_with_length(self.napi_env, value.len, &res));
+                        try s2e(c.napi_create_array_with_length(env, value.len, &res));
 
                         for (value, 0..) |item, i| {
-                            const el = try self.serialize(item);
-                            try s2e(c.napi_set_element(self.napi_env, res, i, el));
+                            const el = try serialize(env, item);
+                            try s2e(c.napi_set_element(env, res, i, el));
                         }
                     }
                 },
@@ -125,51 +72,51 @@ pub fn serialize(self: Self, value: anytype) !c.napi_value {
         },
         .@"struct" => |s| {
             if (!s.is_tuple) {
-                try s2e(c.napi_create_object(self.napi_env, &res));
+                try s2e(c.napi_create_object(env, &res));
                 inline for (s.fields) |field| {
                     std.log.debug("tuple field: {any}", .{field});
                     if (field.type == void) continue;
 
                     const field_val = @field(value, field.name);
 
-                    try s2e(c.napi_set_property(self.napi_env, res, try self.serialize(field.name), try self.serialize(field_val)));
+                    try s2e(c.napi_set_property(env, res, try serialize(env, field.name), try serialize(env, field_val)));
                 }
             } else {
-                try s2e(c.napi_create_array_with_length(self.napi_env, s.fields.len, &res));
+                try s2e(c.napi_create_array_with_length(env, s.fields.len, &res));
                 inline for (s.fields, 0..) |field, i| {
                     std.log.debug("field: {any}", .{field});
                     if (field.type == void) continue;
 
                     const field_val = @field(value, field.name);
-                    try s2e(c.napi_set_element(self.napi_env, res, i, try self.serialize(field_val)));
+                    try s2e(c.napi_set_element(env, res, i, try serialize(env, field_val)));
                 }
             }
         },
 
         .array => |p| {
             if (p.child == u8) {
-                try s2e(c.napi_create_string_utf8(self.napi_env, &value, value.len, &res));
+                try s2e(c.napi_create_string_utf8(env, &value, value.len, &res));
             } else {
-                try s2e(c.napi_create_array_with_length(self.napi_env, value.len, &res));
+                try s2e(c.napi_create_array_with_length(env, value.len, &res));
 
                 for (value, 0..) |item, i| {
-                    const el = try self.serialize(item);
-                    try s2e(c.napi_set_element(self.napi_env, res, i, el));
+                    const el = try serialize(env, item);
+                    try s2e(c.napi_set_element(env, res, i, el));
                 }
             }
         },
         .@"union" => |u| {
             if (u.tag_type) |Tag| {
-                try s2e(c.napi_create_object(self.napi_env, &res));
+                try s2e(c.napi_create_object(env, &res));
 
                 const tag = @as(Tag, value);
                 const tag_name = @tagName(tag);
-                try s2e(c.napi_set_property(self.napi_env, res, try self.serialize("type"), try self.serialize(tag_name)));
+                try s2e(c.napi_set_property(env, res, try serialize(env, "type"), try serialize(env, tag_name)));
 
                 inline for (u.fields) |f| {
                     if (std.mem.eql(u8, f.name, tag_name)) {
                         if (f.type == void) break;
-                        try s2e(c.napi_set_property(self.napi_env, res, try self.serialize("value"), try self.serialize(@field(value, f.name))));
+                        try s2e(c.napi_set_property(env, res, try serialize(env, "value"), try serialize(env, @field(value, f.name))));
                         break;
                     }
                 }
@@ -183,11 +130,11 @@ pub fn serialize(self: Self, value: anytype) !c.napi_value {
     return res;
 }
 
-pub fn deserializeString(self: Self, value: c.napi_value, allocator: std.mem.Allocator) ![]const u8 {
+pub fn deserializeString(env: c.napi_env, value: c.napi_value, allocator: std.mem.Allocator) ![]const u8 {
     var len: usize = undefined;
-    try s2e(c.napi_get_value_string_latin1(self.napi_env, value, null, 0, &len));
+    try s2e(c.napi_get_value_string_latin1(env, value, null, 0, &len));
     const buf = try allocator.allocSentinel(u8, len, 0);
-    try s2e(c.napi_get_value_string_latin1(self.napi_env, value, buf, len + 1, &len));
+    try s2e(c.napi_get_value_string_latin1(env, value, buf, len + 1, &len));
     return buf;
 }
 
@@ -197,7 +144,7 @@ pub fn deserializeString(self: Self, value: c.napi_value, allocator: std.mem.All
 //         var result = allocator.create(T);
 //         for (s.fields) |f| {
 //             var v: c.napi_value = undefined;
-//             try s2e(c.napi_get_property(self.napi_env, value, "", &v));
+//             try s2e(c.napi_get_property(env, value, "", &v));
 //             @field(result, f.name) = self.deserializeValue(f.type, v);
 //         }
 //         return result;
@@ -205,17 +152,18 @@ pub fn deserializeString(self: Self, value: c.napi_value, allocator: std.mem.All
 //     @compileError(std.fmt.comptimePrint("Cannot deserialize value of type {s}. Please specify a struct.", .{@typeName(T)}));
 // }
 
-pub fn deserializeValue(self: Self, comptime T: type, value: c.napi_value) !T {
+/// Converts scalar JS values to Zig values.
+pub fn deserializeValue(env: c.napi_env, comptime T: type, value: c.napi_value) !T {
     const info = @typeInfo(T);
 
     var v: T = undefined;
     switch (info) {
-        .bool => try s2e(c.napi_get_value_bool(self.napi_env, value, &v)),
+        .bool => try s2e(c.napi_get_value_bool(env, value, &v)),
         .int => |i| {
             if (i.signedness == .signed) {
                 switch (i.bits) {
-                    32 => try s2e(c.napi_get_value_int32(self.napi_env, value, &v)),
-                    64 => try s2e(c.napi_get_value_int64(self.napi_env, value, &v)),
+                    32 => try s2e(c.napi_get_value_int32(env, value, &v)),
+                    64 => try s2e(c.napi_get_value_int64(env, value, &v)),
                     // 64 => .{ comptime_int, c.napi_get_value_int64 },
                     else => @compileError(std.fmt.comptimePrint("Cannot deserialize value of type {s}", .{@typeName(T)})),
                 }
@@ -235,17 +183,17 @@ pub fn deserializeValue(self: Self, comptime T: type, value: c.napi_value) !T {
     // return switch (info) {
     //     .bool => {
     //         var b: bool = undefined;
-    //         try s2e(c.napi_get_value_bool(self.napi_env, value, &b));
+    //         try s2e(c.napi_get_value_bool(env, value, &b));
     //         return b;
     //     },
     //     .i32 => {
     //         var v: i32 = undefined;
-    //         try s2e(c.napi_get_value_int32(self.napi_env, value, &v));
+    //         try s2e(c.napi_get_value_int32(env, value, &v));
     //         return v;
     //     },
     //     .i64 => {
     //         var v: i64 = undefined;
-    //         try s2e(c.napi_get_value_int64(self.napi_env, value, &v));
+    //         try s2e(c.napi_get_value_int64(env, value, &v));
     //         return v;
     //     },
 
