@@ -47,7 +47,8 @@ pub fn build(b: *std.Build) void {
     // `zig build test`
     {
         const run_cmd = b.addSystemCommand(&.{"bun"});
-        run_cmd.addArg("./tests/index.ts");
+        run_cmd.addArg("test");
+        run_cmd.cwd = .{ .cwd_relative = "tests" };
         run_cmd.step.dependOn(install_step);
 
         const test_step = b.step("test", "test bindings");

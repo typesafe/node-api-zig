@@ -8,8 +8,9 @@
       "name": "test",
       "type": "lldb",
       "request": "launch",
+      "cwd": "./tests",
       "program": "/run/current-system/sw/bin/bun",
-      "args": ["./tests/index.ts"]
+      "args": ["test"]
     }
   ]
 }

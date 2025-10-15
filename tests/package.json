@@ -1,4 +1,6 @@
 {
   "name": "test",
-  "dependencies": {}
+  "dependencies": {
+    "bun-types": "^1.3.0"
+  }
 }

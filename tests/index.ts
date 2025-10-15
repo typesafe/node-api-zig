@@ -1,4 +1,4 @@
-import addon from "sample/index.js";
+import {MyModule} from "sample";
 
 // prints "[native code]"
 console.log(addon);
@@ -11,3 +11,5 @@ console.log(ret);
 
 // const p=  await addon.afun(123, 123, 123);
 // console.log(p);
+
+const m = new MyModule(123);

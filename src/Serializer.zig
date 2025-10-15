@@ -74,7 +74,7 @@ pub fn serialize(env: c.napi_env, value: anytype) !c.napi_value {
             if (!s.is_tuple) {
                 try s2e(c.napi_create_object(env, &res));
                 inline for (s.fields) |field| {
-                    std.log.debug("tuple field: {any}", .{field});
+                    // std.log.debug("tuple field: {any}", .{field});
                     if (field.type == void) continue;
 
                     const field_val = @field(value, field.name);
@@ -84,7 +84,7 @@ pub fn serialize(env: c.napi_env, value: anytype) !c.napi_value {
             } else {
                 try s2e(c.napi_create_array_with_length(env, s.fields.len, &res));
                 inline for (s.fields, 0..) |field, i| {
-                    std.log.debug("field: {any}", .{field});
+                    // std.log.debug("field: {any}", .{field});
                     if (field.type == void) continue;
 
                     const field_val = @field(value, field.name);

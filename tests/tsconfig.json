@@ -1,1 +1,21 @@
-{}
+{
+  "compilerOptions": {
+    // Target and Module Configuration
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM"],
+
+    // Type Checking
+    "strict": true,
+    // There are no typings in the test modules :-)
+    "noImplicitAny": false,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+
+    "types": ["bun-types"]
+  }
+}

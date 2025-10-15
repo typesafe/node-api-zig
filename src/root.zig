@@ -5,7 +5,7 @@ const Serializer = @import("Serializer.zig");
 const NodeValues = @import("node_values.zig");
 
 /// Represents a Node VM Context.
-pub const Node = @import("Node.zig");
+pub const NodeContext = @import("Node.zig").NodeContext;
 
 /// Represents a Node value.
 pub const NodeValue = NodeValues.NodeValue;
@@ -13,7 +13,7 @@ pub const NodeValue = NodeValues.NodeValue;
 /// The InitFunction to pass to the `register` method. The `ctx` parameter
 /// represents the Node context. The returned value becomes the `exports` value
 /// of the JS module.
-pub const InitFunction = fn (ctx: Node.NodeContext) anyerror!?NodeValue;
+pub const InitFunction = fn (ctx: NodeContext) anyerror!?NodeValue;
 
 /// Initializes a native Node-API module. Example:
 ///
@@ -33,7 +33,7 @@ pub const InitFunction = fn (ctx: Node.NodeContext) anyerror!?NodeValue;
 pub fn register(comptime init_fn: InitFunction) void {
     const module = opaque {
         pub fn napi_register_module_v1(env: c.napi_env, exp: c.napi_value) callconv(.c) c.napi_value {
-            const node = Node.NodeContext{ .napi_env = env };
+            const node = NodeContext{ .napi_env = env };
 
             const exports = init_fn(node) catch |err| {
                 node.handleError(err);
