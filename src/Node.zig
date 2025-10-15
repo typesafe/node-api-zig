@@ -61,16 +61,16 @@ pub const NodeContext = struct {
                 // std.log.debug("FIELD {any}", .{field.name});
                 // std.log.debug("FIELD {any}", .{fun});
 
-                var function: c.napi_value = undefined;
-                s2e(c.napi_create_function(self.napi_env, null, 0, wrapFn(T, fun), null, &function)) catch unreachable;
+                // var function: c.napi_value = undefined;
+                // s2e(c.napi_create_function(self.napi_env, null, 0, wrapFn(T, fun), null, &function)) catch unreachable;
 
                 prop_descriptors[prop_descriptors_len] = c.napi_property_descriptor{
                     .utf8name = field.name,
                     .name = null,
-                    .method = null,
+                    .method = wrapFn(T, fun),
                     .getter = null,
                     .setter = null,
-                    .value = function,
+                    .value = null,
                     .attributes = c.napi_default,
                     .data = null,
                 };
@@ -81,17 +81,21 @@ pub const NodeContext = struct {
 
         inline for (info.fields) |f| {
             std.log.debug("FIELD {any}", .{f.name});
-            // prop_descriptors[prop_descriptors_len] = c.napi_property_descriptor{
-            //     .utf8name = f.name,
-            //     .name = null,
-            //     .method = null,
-            //     .getter = null,
-            //     .setter = null,
-            //     .value = function,
-            //     .attributes = c.napi_default,
-            //     .data = null,
-            // };
-            // prop_descriptors_len += 1;
+
+            const fa = getFieldAccessor(T, f.name);
+            const setter = getFieldSetter(T, f.name, f.type);
+            prop_descriptors[prop_descriptors_len] = c.napi_property_descriptor{
+                .utf8name = f.name,
+                .name = null,
+                .method = null,
+                .getter = fa,
+                .setter = setter,
+                .value = null,
+                .attributes = c.napi_default,
+                .data = null,
+            };
+            prop_descriptors_len += 1;
+
             // .{
             //             .utf8name = "value",
             //             .name = null,
@@ -131,6 +135,64 @@ pub const NodeContext = struct {
         return .{ .napi_env = self.napi_env, .napi_value = class };
     }
 
+    fn getFieldAccessor(
+        comptime T: anytype,
+        comptime field: []const u8,
+    ) fn (env: c.napi_env, cb: c.napi_callback_info) callconv(.c) c.napi_value {
+        return struct {
+            pub fn get(env: c.napi_env, cb: c.napi_callback_info) callconv(.c) c.napi_value {
+                const node = NodeContext{ .napi_env = env };
+                var this_arg: c.napi_value = undefined;
+
+                s2e(c.napi_get_cb_info(env, cb, null, null, &this_arg, null)) catch |err| {
+                    node.handleError(err);
+                    return null;
+                };
+
+                var raw: ?*anyopaque = null;
+                if (c.napi_unwrap(env, this_arg, &raw) != c.napi_ok or raw == null) {
+                    _ = c.napi_throw_error(env, null, "unwrap failed");
+                    return null;
+                }
+                const self: *T = @ptrCast(@alignCast(raw.?));
+                const res = @field(self, field);
+
+                return (node.serialize(res) catch unreachable).napi_value;
+            }
+        }.get;
+    }
+    fn getFieldSetter(
+        comptime T: anytype,
+        comptime field: []const u8,
+        comptime fieldType: type,
+    ) fn (env: c.napi_env, cb: c.napi_callback_info) callconv(.c) c.napi_value {
+        return struct {
+            pub fn set(env: c.napi_env, cb: c.napi_callback_info) callconv(.c) c.napi_value {
+                const node = NodeContext{ .napi_env = env };
+                var this_arg: c.napi_value = undefined;
+                var argv: [1]c.napi_value = undefined;
+                var argc: usize = 1;
+                s2e(c.napi_get_cb_info(env, cb, &argc, &argv, &this_arg, null)) catch |err| {
+                    node.handleError(err);
+                    return null;
+                };
+
+                var raw: ?*anyopaque = null;
+                if (c.napi_unwrap(env, this_arg, &raw) != c.napi_ok or raw == null) {
+                    _ = c.napi_throw_error(env, null, "unwrap failed");
+                    return null;
+                }
+                const self: *T = @ptrCast(@alignCast(raw.?));
+                @field(self, field) = node.deserializeValue(fieldType, NodeValue{
+                    .napi_env = env,
+                    .napi_value = argv[0],
+                }) catch unreachable;
+
+                return (node.getUndefined() catch unreachable).napi_value;
+            }
+        }.set;
+    }
+
     fn getLifetimeHandler(comptime T: anytype, comptime init_fn: anytype, comptime _: anytype) type {
         return struct {
             pub fn init(env: c.napi_env, cb: c.napi_callback_info) callconv(.c) c.napi_value {
@@ -156,7 +218,7 @@ pub const NodeContext = struct {
 
                 // const this = if (this_arg == null) null else NodeValue{ .napi_env = env, .napi_value = this_arg };
                 var fields: TupleTypeOf(params) = undefined;
-                inline for (1..params.len) |i| {
+                inline for (0..params.len) |i| {
                     fields[i] = node.deserializeValue(
                         params[i].type.?,
                         NodeValue{
@@ -203,7 +265,7 @@ pub const NodeContext = struct {
         };
     }
 
-    fn wrapFn(comptime T: anytype, comptime fun: anytype, comptime ctor: bool) fn (env: c.napi_env, cb: c.napi_callback_info) callconv(.c) c.napi_value {
+    fn wrapFn(comptime T: anytype, comptime fun: anytype) fn (env: c.napi_env, cb: c.napi_callback_info) callconv(.c) c.napi_value {
         return opaque {
             pub fn f(env: c.napi_env, cb: c.napi_callback_info) callconv(.c) c.napi_value {
                 const params = switch (@typeInfo(@TypeOf(fun))) {
@@ -221,12 +283,12 @@ pub const NodeContext = struct {
                     return null;
                 };
 
-                if (ctor and (params.len == 0 or params[0].type != T)) {
-                    @compileError("first argument must be self T");
-                }
+                // if (ctor and (params.len == 0 or params[0].type != T)) {
+                //     @compileError("first argument must be self T");
+                // }
 
                 var fields: TupleTypeOf(params) = undefined;
-                std.log.info("fields: {any}", .{fields});
+                // std.log.info("fields: {any}", .{fields});
                 if (params[0].type.? == T) {
                     var raw: ?*anyopaque = null;
                     if (c.napi_unwrap(env, this_arg, &raw) != c.napi_ok or raw == null) {
@@ -237,55 +299,20 @@ pub const NodeContext = struct {
                     fields[0] = self.*;
                 }
 
-                if (ctor) {
-                    inline for (0..params.len) |i| {
-                        if (i == 0 and params[i].type.? == T) {
-                            var raw: ?*anyopaque = null;
-                            if (c.napi_unwrap(env, this_arg, &raw) != c.napi_ok or raw == null) {
-                                _ = c.napi_throw_error(env, null, "unwrap failed");
-                                return null;
-                            }
-                            const self: *T = @ptrCast(@alignCast(raw.?));
-                            fields[i] = self.*;
-                        } else {
-                            std.log.info("deserializing", .{});
+                inline for (params[1..], 1..) |p, i| {
+                    {
+                        std.log.info("deserializing", .{});
 
-                            fields[i] = node.deserializeValue(
-                                params[i].type.?,
-                                NodeValue{
-                                    .napi_env = node.napi_env,
-                                    .napi_value = args[i],
-                                },
-                            ) catch |err| {
-                                std.log.info("deserializing {any}", .{err});
-                                @panic("kablammo");
-                            };
-                        }
-                    }
-                } else {
-                    inline for (params[1..], 0..) |p, i| {
-                        if (i == 0 and p.type.? == T) {
-                            var raw: ?*anyopaque = null;
-                            if (c.napi_unwrap(env, this_arg, &raw) != c.napi_ok or raw == null) {
-                                _ = c.napi_throw_error(env, null, "unwrap failed");
-                                return null;
-                            }
-                            const self: *T = @ptrCast(@alignCast(raw.?));
-                            fields[i] = self.*;
-                        } else {
-                            std.log.info("deserializing", .{});
-
-                            fields[i] = node.deserializeValue(
-                                p.type.?,
-                                NodeValue{
-                                    .napi_env = node.napi_env,
-                                    .napi_value = args[i],
-                                },
-                            ) catch |err| {
-                                std.log.info("deserializing {any}", .{err});
-                                @panic("kablammo");
-                            };
-                        }
+                        fields[i] = node.deserializeValue(
+                            p.type.?,
+                            NodeValue{
+                                .napi_env = node.napi_env,
+                                .napi_value = args[i - 1],
+                            },
+                        ) catch |err| {
+                            std.log.info("deserializing {any}", .{err});
+                            @panic("kablammo");
+                        };
                     }
                 }
 

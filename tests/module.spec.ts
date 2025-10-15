@@ -4,9 +4,12 @@ import { describe, it, expect } from "bun:test";
 describe("Import Node-API module", () => {
   it("should return module value", () => {
     console.log("CLASS ", addon.C);
-    const c = new addon.C();
+    const c = new addon.C(12);
+
     console.log("instance ", c);
-    c.callMe(12);
+    console.log("c.foo = ", c.foo);
+    c.foo = 1000;
+    console.log("callMe = ", c.callMe(13, "tralala"));
 
     expect(addon).toBeDefined();
   });

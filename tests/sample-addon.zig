@@ -76,13 +76,15 @@ fn testFuncNative2(i: i32, b: bool) !i32 {
 
 const MyModule = struct {
     foo: i32 = 123,
+    str: []u8,
 
-    // pub fn init(v: i32) MyModule {
-    //     std.log.debug("ctor {any}", .{v});
-    //     return .{ .foo = v };
-    // }
+    pub fn init(v: i32) MyModule {
+        std.log.debug("ctor {any}", .{v});
+        return .{ .foo = v, .str = &std.mem.zeroes([0]u8) };
+    }
 
-    pub fn callMe(self: @This(), v: i32) !void {
-        std.log.debug("callMe {any} {any}", .{ self, v });
+    pub fn callMe(self: @This(), v: i32, s: []u8) !i32 {
+        std.log.debug("callMe called with arguments <{any}> and '{s}'", .{ v, s });
+        return v + self.foo;
     }
 };
