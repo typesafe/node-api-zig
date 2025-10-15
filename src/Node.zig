@@ -255,10 +255,11 @@ pub const NodeContext = struct {
             }
 
             pub fn deinit(_: c.napi_env, data: ?*anyopaque, _: ?*anyopaque) callconv(.c) void {
-                std.log.info("deinit", .{});
+                std.log.info("Zig Finalizer!", .{});
 
                 if (data) |ptr| {
                     const self: *T = @ptrCast(@alignCast(ptr));
+                    std.log.info(" Finalizer data {any} {any}", .{ data, self });
                     std.heap.c_allocator.destroy(self);
                 }
             }

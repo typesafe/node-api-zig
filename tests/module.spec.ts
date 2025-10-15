@@ -1,5 +1,6 @@
 import addon from "sample";
 import { describe, it, expect } from "bun:test";
+import { gc } from "bun";
 
 describe("Import Node-API module", () => {
   it("should return module value", () => {
@@ -12,5 +13,13 @@ describe("Import Node-API module", () => {
     console.log("callMe = ", c.callMe(13, "tralala"));
 
     expect(addon).toBeDefined();
+  });
+});
+
+describe("Finalizer", () => {
+  it("should call deinit", () => {
+    // no reference to newed obj
+    new addon.C(12);
+    gc(true);
   });
 });
