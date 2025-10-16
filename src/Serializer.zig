@@ -130,10 +130,10 @@ pub fn serialize(env: c.napi_env, value: anytype) !c.napi_value {
     return res;
 }
 
-pub fn deserializeString(env: c.napi_env, value: c.napi_value, allocator: std.mem.Allocator) ![]u8 {
+pub fn deserializeString(env: c.napi_env, value: c.napi_value) ![]u8 {
     var len: usize = undefined;
     try s2e(c.napi_get_value_string_latin1(env, value, null, 0, &len));
-    const buf = try allocator.allocSentinel(u8, len, 0);
+    const buf = try std.heap.c_allocator.allocSentinel(u8, len, 0);
     try s2e(c.napi_get_value_string_latin1(env, value, buf, len + 1, &len));
     return buf;
 }
@@ -174,14 +174,22 @@ pub fn deserializeValue(env: c.napi_env, comptime T: type, value: c.napi_value) 
                 }
             }
         },
+        .optional => |o| {
+            v = try deserializeValue(env, o.child, value);
+        },
         .pointer => |p| {
             switch (p.size) {
                 .slice => {
-                    v = try deserializeString(env, value, std.heap.c_allocator);
+                    v = try deserializeString(env, value);
                 },
                 else => {
                     @compileError("only u8 slices");
                 },
+            }
+        },
+        .@"struct" => {
+            if (T == NodeValue) {
+                return NodeValue{ .napi_env = env, .napi_value = value };
             }
         },
         else => @compileError(std.fmt.comptimePrint("Cannot deserialize value of type {s}", .{@typeName(T)})),

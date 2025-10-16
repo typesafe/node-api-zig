@@ -15,7 +15,7 @@ fn init(node: node_api.NodeContext) !?node_api.NodeValue {
     const b = try node.deserializeValue(bool, try node.serialize(true));
 
     const x = try node.deserializeValue(i32, try node.serialize(1234));
-    const s = try node.deserializeString(try node.serialize("string from zig to Node back to Zig"), allocator);
+    const s = try node.deserializeString(try node.serialize("string from zig to Node back to Zig"));
     const v = try node.serialize(.{
         .C = try node.defineClass(MyModule),
         .fun2 = try node.createFunction(2, testFunc2),
@@ -75,16 +75,31 @@ fn testFuncNative2(i: i32, b: bool) !i32 {
 }
 
 const MyModule = struct {
-    foo: i32 = 123,
-    str: []u8,
+    // allocator that will be used to allocate memory of arguments, node.allocator will be used as default
+    // allocator
 
-    pub fn init(v: i32) MyModule {
-        std.log.debug("ctor {any}", .{v});
-        return .{ .foo = v, .str = &std.mem.zeroes([0]u8) };
+    foo: i32 = 123,
+    str: ?[]u8,
+
+    pub fn init(ctx: node_api.NodeContext, v: i32) MyModule {
+        std.log.debug("ctor {any} {any}", .{ ctx, v });
+        return .{ .foo = v, .str = null };
     }
 
-    pub fn callMe(self: @This(), v: i32, s: []u8) !i32 {
+    // ctx is injected automatically
+    pub fn callMe(self: @This(), ctx: node_api.NodeContext, v: i32, s: []u8) !i32 {
+        std.log.debug("callMe called with arguments {any} <{any}> and '{s}'", .{ ctx, v, s });
+        return v + self.foo;
+    }
+
+    // s is owned!
+    pub fn methodThatOwnsParamMemory(self: @This(), v: i32, s: []u8) !i32 {
         std.log.debug("callMe called with arguments <{any}> and '{s}'", .{ v, s });
         return v + self.foo;
+    }
+
+    pub fn callWithParamsByRef(_: @This(), _: node_api.NodeContext, v: node_api.NodeValue, s: node_api.NodeValue) !node_api.NodeValue {
+        std.log.debug("callWithParamsByRef called with arguments <{any}> and '{s}'", .{ v, try s.deserializeValue([]u8) });
+        return v;
     }
 };

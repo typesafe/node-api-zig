@@ -3,9 +3,9 @@ import { describe, it, expect } from "bun:test";
 import { gc } from "bun";
 
 describe("Import Node-API module", () => {
+  const c = new addon.C(12);
   it("should return module value", () => {
     console.log("CLASS ", addon.C);
-    const c = new addon.C(12);
 
     console.log("instance ", c);
     console.log("c.foo = ", c.foo);
@@ -13,6 +13,10 @@ describe("Import Node-API module", () => {
     console.log("callMe = ", c.callMe(13, "tralala"));
 
     expect(addon).toBeDefined();
+  });
+
+  it("should pass params by ref", () => {
+    console.log("callWithParamsByRef", c.callWithParamsByRef(1456, "bar", ["foo"]));
   });
 });
 

@@ -25,6 +25,20 @@ pub const NodeContext = struct {
 
     napi_env: c.napi_env,
 
+    pub fn init(env: c.napi_env) Self {
+        return Self{ .napi_env = env };
+    }
+
+    pub fn allocateSentinel(_: Self, T: type, n: usize) !void {
+        try std.heap.c_allocator.allocSentinel(T, n, 0);
+        // TODO try s2e(c.napi_adjust_external_memory(self.napi_env,n, null));
+    }
+
+    pub fn free(_: Self, memory: anytype) !void {
+        try std.heap.c_allocator.free(memory);
+        // TODO try s2e(c.napi_adjust_external_memory(self.napi_env, , null));
+    }
+
     pub fn getNull(self: Self) !NodeValue {
         return self.get(c.napi_get_null);
     }
@@ -218,16 +232,23 @@ pub const NodeContext = struct {
 
                 // const this = if (this_arg == null) null else NodeValue{ .napi_env = env, .napi_value = this_arg };
                 var fields: TupleTypeOf(params) = undefined;
+                var arg: u8 = 0;
                 inline for (0..params.len) |i| {
-                    fields[i] = node.deserializeValue(
-                        params[i].type.?,
-                        NodeValue{
-                            .napi_env = node.napi_env,
-                            .napi_value = args[i],
-                        },
-                    ) catch {
-                        @panic("kablammo");
-                    };
+                    if (params[i].type.? == NodeContext) {
+                        fields[i] = node;
+                    } else {
+                        fields[i] = node.deserializeValue(
+                            params[i].type.?,
+                            NodeValue{
+                                .napi_env = node.napi_env,
+                                .napi_value = args[arg],
+                            },
+                        ) catch |err| {
+                            std.log.err("err {any}", .{err});
+                            @panic("kablammo init");
+                        };
+                        arg += 1;
+                    }
                 }
 
                 const self = std.heap.c_allocator.create(T) catch {
@@ -300,20 +321,25 @@ pub const NodeContext = struct {
                     fields[0] = self.*;
                 }
 
+                var arg: u8 = 0;
                 inline for (params[1..], 1..) |p, i| {
                     {
                         std.log.info("deserializing", .{});
-
-                        fields[i] = node.deserializeValue(
-                            p.type.?,
-                            NodeValue{
-                                .napi_env = node.napi_env,
-                                .napi_value = args[i - 1],
-                            },
-                        ) catch |err| {
-                            std.log.info("deserializing {any}", .{err});
-                            @panic("kablammo");
-                        };
+                        if (params[i].type.? == NodeContext) {
+                            fields[i] = node;
+                        } else {
+                            fields[i] = node.deserializeValue(
+                                p.type.?,
+                                NodeValue{
+                                    .napi_env = node.napi_env,
+                                    .napi_value = args[arg],
+                                },
+                            ) catch |err| {
+                                std.log.info("deserializing {any}", .{err});
+                                @panic("kablammooo");
+                            };
+                            arg += 1;
+                        }
                     }
                 }
 
@@ -417,7 +443,7 @@ pub const NodeContext = struct {
                             .napi_value = args[i],
                         },
                     ) catch {
-                        @panic("kablammo");
+                        @panic("kablammoho");
                     };
                 }
 
@@ -553,8 +579,8 @@ pub const NodeContext = struct {
         return Serializer.deserializeValue(self.napi_env, T, value.napi_value);
     }
 
-    pub fn deserializeString(self: Self, value: NodeValue, allocator: std.mem.Allocator) ![]const u8 {
-        return Serializer.deserializeString(self.napi_env, value.napi_value, allocator);
+    pub fn deserializeString(self: Self, value: NodeValue) ![]const u8 {
+        return Serializer.deserializeString(self.napi_env, value.napi_value);
     }
 
     pub fn handleError(self: Self, err: anyerror) void {
