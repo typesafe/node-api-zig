@@ -179,6 +179,9 @@ pub fn deserializeValue(env: c.napi_env, comptime T: type, value: c.napi_value) 
         },
         .pointer => |p| {
             switch (p.size) {
+                .one => {
+                    try s2e(c.napi_unwrap(env, value, @as([*c]?*anyopaque, @ptrCast(&v))));
+                },
                 .slice => {
                     v = try deserializeString(env, value);
                 },

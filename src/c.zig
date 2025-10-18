@@ -3,6 +3,32 @@ pub const c = @cImport({
     @cInclude("node_api.h");
 });
 
+// pub fn Wrap(comptime T: type, comptime decls: anytype) type {
+//     const N = decls.len;
+
+//     var fields: [N]builtin.Type.StructField = undefined;
+
+//     inline for (decls, 0..) |d, i| {
+//         fields[i] = .{
+//             .name = d.name,
+//             .type = d.ty,
+//             .default_value = null,          // keep it simple; you can wire a default if you want
+//             .is_comptime = false,
+//             .alignment = @alignOf(d.ty),
+//         };
+//     }
+
+//     return @Type(.{
+//         .Struct = .{
+//             .layout = .Auto,
+//             .fields = &fields,
+//             .decls = &.{},                  // no nested declarations (constants/functions) added here
+//             .is_tuple = false,
+//         },
+//     });
+// }
+
+/// Maps a node_api status codes to Zig errors.
 pub fn statusToError(status: c_uint) NodeApiError!void {
     const v: NapiStatusValue = @enumFromInt(status);
 

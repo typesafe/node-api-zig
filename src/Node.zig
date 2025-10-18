@@ -22,6 +22,7 @@ pub fn NodeFunction(comptime arg_count: usize) type {
 /// Represents a context that the underlying Node-API implementation can use to persist VM-specific state.
 pub const NodeContext = struct {
     const Self = @This();
+    pub var allocator: std.mem.Allocator = std.heap.c_allocator;
 
     napi_env: c.napi_env,
 
@@ -30,12 +31,12 @@ pub const NodeContext = struct {
     }
 
     pub fn allocateSentinel(_: Self, T: type, n: usize) !void {
-        try std.heap.c_allocator.allocSentinel(T, n, 0);
+        try allocator.allocSentinel(T, n, 0);
         // TODO try s2e(c.napi_adjust_external_memory(self.napi_env,n, null));
     }
 
     pub fn free(_: Self, memory: anytype) !void {
-        try std.heap.c_allocator.free(memory);
+        try allocator.free(memory);
         // TODO try s2e(c.napi_adjust_external_memory(self.napi_env, , null));
     }
 
@@ -54,94 +55,11 @@ pub const NodeContext = struct {
     // pub fn w/ self -> method
 
     pub fn defineClass(self: Self, comptime T: anytype) !NodeValue {
-        const info = @typeInfo(T).@"struct";
-
-        // buffer includes len for private members, we are counting the size on-the-fly
-        var prop_descriptors: [info.fields.len + info.decls.len]c.napi_property_descriptor = undefined;
-        var prop_descriptors_len: usize = 0;
-
-        inline for (info.decls) |field| {
-
-            // // TODO
-            // if (std.mem.eql(u8, field.name, "init")) {
-
-            //     // s2e(c.napi_create_function(self.napi_env, null, 0, wrapFn(T, fun, true), null, &ctor)) catch unreachable;
-            // }
-
-            // if (std.mem.eql(u8, field.name, "deinit")) {}
-
-            if (!std.mem.eql(u8, field.name, "init")) {
-                const fun = @field(T, field.name);
-                // std.log.debug("FIELD {any}", .{field.name});
-                // std.log.debug("FIELD {any}", .{fun});
-
-                // var function: c.napi_value = undefined;
-                // s2e(c.napi_create_function(self.napi_env, null, 0, wrapFn(T, fun), null, &function)) catch unreachable;
-
-                prop_descriptors[prop_descriptors_len] = c.napi_property_descriptor{
-                    .utf8name = field.name,
-                    .name = null,
-                    .method = wrapFn(T, fun),
-                    .getter = null,
-                    .setter = null,
-                    .value = null,
-                    .attributes = c.napi_default,
-                    .data = null,
-                };
-                prop_descriptors_len += 1;
-                // const fld = @field(T, f.name);
-            }
-        }
-
-        inline for (info.fields) |f| {
-            std.log.debug("FIELD {any}", .{f.name});
-
-            const fa = getFieldAccessor(T, f.name);
-            const setter = getFieldSetter(T, f.name, f.type);
-            prop_descriptors[prop_descriptors_len] = c.napi_property_descriptor{
-                .utf8name = f.name,
-                .name = null,
-                .method = null,
-                .getter = fa,
-                .setter = setter,
-                .value = null,
-                .attributes = c.napi_default,
-                .data = null,
-            };
-            prop_descriptors_len += 1;
-
-            // .{
-            //             .utf8name = "value",
-            //             .name = null,
-            //             .method = null,
-            //             .getter = Counter.getValue,
-            //             .setter = null,
-            //             .value = null,
-            //             .attributes = c.napi_default,
-            //             .data = null,
-            //         },
-
-            //         pub fn getValue(env: c.napi_env, info: c.napi_callback_info) callconv(.C) c.napi_value {
-            //     const this_val = getThis(env, info) catch return null;
-
-            //     var raw: ?*anyopaque = null;
-            //     if (c.napi_unwrap(env, this_val, &raw) != c.napi_ok or raw == null) {
-            //         _ = c.napi_throw_error(env, null, "unwrap failed");
-            //         return null;
-            //     }
-            //     const self: *Counter = @ptrCast(@alignCast(raw.?));
-
-            //     var out: c.napi_value = null;
-            //     _ = c.napi_create_double(env, @as(f64, @floatFromInt(self.value)), &out);
-            //     return out;
-            // }
-        }
-
         const lifetime = getLifetimeHandler(T, @field(T, "init"), null);
 
         var class: c.napi_value = undefined;
-
-        s2e(c.napi_define_class(self.napi_env, "Foo", 3, lifetime.init, null, prop_descriptors_len, &prop_descriptors, &class)) catch unreachable;
+        const props = getProps(T);
+        s2e(c.napi_define_class(self.napi_env, "Foo", 3, lifetime.init, null, props.len, props.ptr, &class)) catch unreachable;
 
         // s2e(c.napi_create_object(self.napi_env, &class)) catch unreachable;
         // s2e(c.napi_define_properties(self.napi_env, class, prop_descriptors_len, &prop_descriptors)) catch unreachable;
@@ -149,7 +67,16 @@ pub const NodeContext = struct {
         return .{ .napi_env = self.napi_env, .napi_value = class };
     }
 
-    fn getFieldAccessor(
+    fn unwrapInstance(comptime T: anytype, env: c.napi_env, value: c.napi_value) !*T {
+        var raw: ?*anyopaque = null;
+        if (c.napi_unwrap(env, value, &raw) != c.napi_ok or raw == null) {
+            return error.UnwrapFailed;
+        }
+        std.log.debug("unwrapped instance of {s}", .{@typeName(T)});
+        return @ptrCast(@alignCast(raw.?));
+    }
+
+    fn getFieldGetter(
         comptime T: anytype,
         comptime field: []const u8,
     ) fn (env: c.napi_env, cb: c.napi_callback_info) callconv(.c) c.napi_value {
@@ -162,15 +89,12 @@ pub const NodeContext = struct {
                     node.handleError(err);
                     return null;
                 };
-
-                var raw: ?*anyopaque = null;
-                if (c.napi_unwrap(env, this_arg, &raw) != c.napi_ok or raw == null) {
+                const self = unwrapInstance(T, env, this_arg) catch {
                     _ = c.napi_throw_error(env, null, "unwrap failed");
                     return null;
-                }
-                const self: *T = @ptrCast(@alignCast(raw.?));
-                const res = @field(self, field);
+                };
 
+                const res = @field(self, field);
                 return (node.serialize(res) catch unreachable).napi_value;
             }
         }.get;
@@ -205,6 +129,50 @@ pub const NodeContext = struct {
                 return (node.getUndefined() catch unreachable).napi_value;
             }
         }.set;
+    }
+
+    inline fn getProps(comptime T: anytype) []c.napi_property_descriptor {
+        const info = @typeInfo(T).@"struct";
+
+        var prop_descriptors: [info.fields.len + info.decls.len]c.napi_property_descriptor = undefined;
+        // `prop_descriptors` buffer includes len for private fields, init and deinit, which will be skipped,
+        // so we need to track the len separately
+        var prop_descriptors_len: usize = 0;
+
+        inline for (info.decls) |decl| {
+            if (!std.mem.eql(u8, decl.name, "init") and !std.mem.eql(u8, decl.name, "deinit")) {
+                std.log.debug("defining method {s}.{s}", .{ @typeName(T), decl.name });
+
+                prop_descriptors[prop_descriptors_len] = c.napi_property_descriptor{
+                    .utf8name = decl.name,
+                    .name = null,
+                    .method = wrapFn(T, @field(T, decl.name)),
+                    .getter = null,
+                    .setter = null,
+                    .value = null,
+                    .attributes = c.napi_default,
+                    .data = null,
+                };
+                prop_descriptors_len += 1;
+            }
+        }
+        inline for (info.fields) |f| {
+            std.log.debug("defining field {s}.{s}", .{ @typeName(T), f.name });
+
+            prop_descriptors[prop_descriptors_len] = c.napi_property_descriptor{
+                .utf8name = f.name,
+                .name = null,
+                .method = null,
+                .getter = getFieldGetter(T, f.name),
+                .setter = getFieldSetter(T, f.name, f.type),
+                .value = null,
+                .attributes = c.napi_default,
+                .data = null,
+            };
+            prop_descriptors_len += 1;
+        }
+
+        return prop_descriptors[0..prop_descriptors_len];
     }
 
     fn getLifetimeHandler(comptime T: anytype, comptime init_fn: anytype, comptime _: anytype) type {
@@ -281,7 +249,25 @@ pub const NodeContext = struct {
                 if (data) |ptr| {
                     const self: *T = @ptrCast(@alignCast(ptr));
                     std.log.info(" Finalizer data {any} {any}", .{ data, self });
-                    std.heap.c_allocator.destroy(self);
+                    freee(T, self);
+                }
+            }
+
+            /// instance is TT or *TT (due to this being called recursively)
+            fn freee(comptime TT: type, instance: anytype) void {
+                switch (@typeInfo(TT)) {
+                    .@"struct" => |s| {
+                        inline for (s.fields) |f| {
+                            freee(f.type, @field(instance, f.name));
+                        }
+                        std.heap.c_allocator.destroy(instance);
+                    },
+                    // TODO more
+
+                    .pointer => {
+                        std.heap.c_allocator.destroy(instance);
+                    },
+                    else => {},
                 }
             }
         };
@@ -365,6 +351,30 @@ pub const NodeContext = struct {
             }
         }.f;
     }
+
+    /// Wrap a native instance in a JS object reference.
+    pub fn wrapInstance(self: Self, comptime T: anytype, instance: T) !NodeValue {
+        const i = try std.heap.c_allocator.create(T);
+        i.* = instance;
+
+        const props = getProps(T);
+
+        var js_obj: c.napi_value = undefined;
+        try s2e(c.napi_create_object(self.napi_env, &js_obj));
+        try s2e(c.napi_define_properties(self.napi_env, js_obj, props.len, props.ptr));
+        // Associate native pointer with JS object
+        try s2e(c.napi_wrap(
+            self.napi_env,
+            js_obj,
+            i,
+            // TODO: associate deninit if any and free memory
+            null,
+            null,
+            null,
+        ));
+        return NodeValue{ .napi_env = self.napi_env, .napi_value = js_obj };
+    }
+
     /// Creates a JS-accessible function.
     pub fn createFunction(self: Self, comptime arg_count: usize, fun: NodeFunction(arg_count)) !NodeValue {
         const f = opaque {

@@ -17,7 +17,9 @@ fn init(node: node_api.NodeContext) !?node_api.NodeValue {
     const x = try node.deserializeValue(i32, try node.serialize(1234));
     const s = try node.deserializeString(try node.serialize("string from zig to Node back to Zig"));
     const v = try node.serialize(.{
-        .C = try node.defineClass(MyModule),
+        .TestClass = try node.defineClass(TestClass),
+        .wrappedInstance = try node.wrapInstance(WrapTarget, .{ .foo = 123, .bar = "hopla" }),
+
         .fun2 = try node.createFunction(2, testFunc2),
         .fun = try node.createFunction(0, testFunc),
         // .afun = try node.createAsyncFunction(0, testFunc),
@@ -74,32 +76,71 @@ fn testFuncNative2(i: i32, b: bool) !i32 {
     return 456;
 }
 
-const MyModule = struct {
-    // allocator that will be used to allocate memory of arguments, node.allocator will be used as default
-    // allocator
+// allocated (JS `new TestClass()`) and freed/destroyed (GC finalizer) automatically
+// including fields!
+const TestClass = struct {
+    const Self = @This();
+
+    // allocator field vs allocator parameter
 
     foo: i32 = 123,
+    // freed as part of MyModule
+    // set from JS will free existing value
+    // can be nested struct
     str: ?[]u8,
+    // "private for JS" field
+    _foo: ?[]u8 = null,
 
-    pub fn init(ctx: node_api.NodeContext, v: i32) MyModule {
+    // maps to ctor in JS (`new MyModule(123)`)
+    // `ctx` is "injected" based on its type (NodeContext)
+    pub fn init(ctx: node_api.NodeContext, v: i32) Self {
         std.log.debug("ctor {any} {any}", .{ ctx, v });
         return .{ .foo = v, .str = null };
     }
 
-    // ctx is injected automatically
-    pub fn callMe(self: @This(), ctx: node_api.NodeContext, v: i32, s: []u8) !i32 {
+    // Borrow slice
+
+    // callee allocates result/return,
+
+    // struct creates owned memory
+
+    /// maps to JS instance.callMe(123, "foo")
+    /// ctx is injected here as well
+    /// self "just works"
+    /// input params and return values are serialized if they are Zig types
+    /// memory allocated for s is owned,
+    /// - setting it to a field will retult in free/destroy at finalize
+    /// - else it needs to be freed here!
+    pub fn callMe(self: Self, ctx: node_api.NodeContext, v: i32, s: []u8) !i32 {
+        // self.str = s;
+
         std.log.debug("callMe called with arguments {any} <{any}> and '{s}'", .{ ctx, v, s });
         return v + self.foo;
     }
 
-    // s is owned!
-    pub fn methodThatOwnsParamMemory(self: @This(), v: i32, s: []u8) !i32 {
+    pub fn methodThatOwnsParamMemory(self: Self, v: i32, s: []u8) !i32 {
         std.log.debug("callMe called with arguments <{any}> and '{s}'", .{ v, s });
         return v + self.foo;
     }
 
-    pub fn callWithParamsByRef(_: @This(), _: node_api.NodeContext, v: node_api.NodeValue, s: node_api.NodeValue) !node_api.NodeValue {
+    /// NodeValues are "by ref"
+    pub fn callWithParamsByRef(_: Self, _: node_api.NodeContext, v: node_api.NodeValue, s: node_api.NodeValue) !node_api.NodeValue {
         std.log.debug("callWithParamsByRef called with arguments <{any}> and '{s}'", .{ v, try s.deserializeValue([]u8) });
         return v;
+    }
+
+    /// Async method will return Promise<ReturnType>
+    /// mapped to `const res = await instance.method("foo")`
+    pub fn methodAsync(_: Self, _: node_api.NodeContext, v: node_api.NodeValue, s: node_api.NodeValue) !node_api.NodeValue {
+        std.log.debug("callWithParamsByRef called with arguments <{any}> and '{s}'", .{ v, try s.deserializeValue([]u8) });
+        return v;
+    }
+};
+
+const WrapTarget = struct {
+    foo: i32,
+    bar: []const u8,
+    pub fn method(_: WrapTarget) !i32 {
+        return 123;
     }
 };

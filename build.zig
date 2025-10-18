@@ -21,7 +21,7 @@ pub fn build(b: *std.Build) void {
         .linkage = .dynamic,
         .name = "sample-addon",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("tests/sample-addon.zig"),
+            .root_source_file = b.path("tests/zig/test-module.zig"),
             .optimize = optimize,
             .target = target,
         }),
@@ -38,8 +38,8 @@ pub fn build(b: *std.Build) void {
             sample_addon,
             .{
                 // custom dir is relative to ./zig-out
-                .dest_dir = .{ .override = .{ .custom = "../tests/node_modules/sample" } },
-                .dest_sub_path = "sample-addon.node",
+                .dest_dir = .{ .override = .{ .custom = "../tests/node_modules/node-api-test-module" } },
+                .dest_sub_path = "zig-module.node",
             },
         ).step,
     );
