@@ -226,7 +226,7 @@ pub const NodeContext = struct {
                     env,
                     this_arg,
                     self,
-                    deinit,
+                    finalize,
                     null,
                     null,
                 ) != c.napi_ok) {
@@ -238,16 +238,18 @@ pub const NodeContext = struct {
                 return this_arg;
             }
 
-            pub fn deinit(_: c.napi_env, data: ?*anyopaque, _: ?*anyopaque) callconv(.c) void {
+            pub fn finalize(e: c.napi_env, data: ?*anyopaque, _: ?*anyopaque) callconv(.c) void {
                 std.log.info("Zig Finalizer!", .{});
 
-                if (data) |ptr| {
-                    const self: *T = @ptrCast(@alignCast(ptr));
-                    _ = try @call(.auto, deinit_fn, .{self.*});
+                _ = callFunction(T, deinit_fn, NodeContext.init(e), .{ .zig = data }, &.{}) catch |err| {
+                    _ = err;
+                    // TODO;
+                    unreachable;
+                };
+                const self: *T = @ptrCast(@alignCast(data.?));
 
-                    std.log.info(" Finalizer data {any} {any}", .{ data, self });
-                    freee(T, self);
-                }
+                std.log.info(" Finalizer data {any} {any}", .{ data, self });
+                freee(T, self);
             }
 
             /// instance is TT or *TT (due to this being called recursively)
@@ -297,67 +299,16 @@ pub const NodeContext = struct {
                     return null;
                 };
 
-                var fields: TupleTypeOf(params) = undefined;
-
-                const is_static = params.len == 0 or params[0].type != T;
-                if (!is_static) {
-                    var raw: ?*anyopaque = null;
-                    if (c.napi_unwrap(env, this_arg, &raw) != c.napi_ok or raw == null) {
-                        _ = c.napi_throw_error(env, null, "unwrap failed");
-                        return null;
-                    }
-                    const self: *T = @ptrCast(@alignCast(raw.?));
-                    fields[0] = self.*;
-                }
-
-                const offset = if (is_static) 0 else 1;
-                var arg: u8 = 0;
-                inline for (params[offset..], offset..) |p, i| {
-                    {
-                        std.log.info("deserializing", .{});
-                        if (params[i].type.? == NodeContext) {
-                            fields[i] = node;
-                        } else if (params[i].type.? == std.mem.Allocator) {
-                            fields[i] = allocator;
-                        } else {
-                            if (arg >= argc) {
-                                node.throw(error.MissingArguments);
-                                return null;
-                            }
-                            fields[i] = node.deserializeValue(
-                                p.type.?,
-                                NodeValue{
-                                    .napi_env = node.napi_env,
-                                    .napi_value = args[arg],
-                                },
-                            ) catch |err| {
-                                node.handleError(err);
-                                return null;
-                            };
-                            arg += 1;
-                        }
-                    }
-                }
-
-                const ret = @call(.auto, fun, fields);
-                const res = switch (@typeInfo(@TypeOf(ret))) {
-                    .error_union => ret catch |err| {
-                        node.handleError(err);
-                        return null;
-                    },
-                    else => ret,
+                return callFunction(
+                    T,
+                    fun,
+                    node,
+                    .{ .js = this_arg },
+                    args[0..argc],
+                ) catch |err| {
+                    node.handleError(err);
+                    return null;
                 };
-
-                if (@TypeOf(res) != void) {
-                    return (node.serialize(res) catch |err| {
-                        node.handleError(err);
-                        return null;
-                    }).napi_value;
-                }
-
-                return (node.getUndefined() catch {
-                    @panic("kablammo");
-                }).napi_value;
             }
         }.f;
     }
@@ -586,4 +537,123 @@ inline fn endsWith(comptime haystack: []const u8, comptime needle: []const u8) b
     if (needle.len > haystack.len) return false;
     const start = haystack.len - needle.len;
     return std.mem.eql(u8, haystack[start..], needle);
+}
+
+const SelfParamType = enum { none, value, pointer };
+
+inline fn isSelfParam(comptime T: anytype, comptime param: std.builtin.Type.Fn.Param) SelfParamType {
+    switch (@typeInfo(param.type.?)) {
+        .pointer => |p| {
+            if (p.child == T) return .pointer;
+        },
+        .@"struct" => {
+            if (param.type == T) return .value;
+        },
+        else => {},
+    }
+
+    return .none;
+}
+
+inline fn getSelfParam(comptime T: anytype, comptime params: []const std.builtin.Type.Fn.Param) SelfParamType {
+    if (params.len == 0) {
+        return .none;
+    }
+
+    return isSelfParam(T, params[0]);
+}
+
+const ZigOrJsPointer = union(enum) {
+    zig: ?*anyopaque,
+    js: c.napi_value,
+};
+
+inline fn callFunction(
+    comptime T: anytype,
+    comptime fun: anytype,
+    node: NodeContext,
+    this: ZigOrJsPointer,
+    js_args: []c.napi_value,
+) !c.napi_value {
+    const params = switch (@typeInfo(@TypeOf(fun))) {
+        .@"fn" => |t| t.params,
+        else => @compileError("`fun` must be a function."),
+    };
+
+    var fields: TupleTypeOf(params) = undefined;
+    const selfParam = getSelfParam(T, params);
+
+    if (selfParam != .none) {
+        const ptr = switch (this) {
+            .js => |v| js: {
+                var raw: ?*anyopaque = null;
+                if (c.napi_unwrap(node.napi_env, v, &raw) != c.napi_ok or raw == null) {
+                    unreachable;
+                }
+                break :js raw;
+            },
+            .zig => |v| v,
+        };
+
+        if (ptr) |v| {
+            const self: *T = @ptrCast(@alignCast(v));
+            if (selfParam == .pointer) {
+                fields[0] = self;
+            } else {
+                fields[0] = self.*;
+            }
+        } else {
+            // TODO: method was called without rquired this
+            unreachable;
+        }
+    }
+
+    const offset = if (selfParam == .none) 0 else 1;
+    var arg: u8 = 0;
+    inline for (params[offset..], offset..) |p, i| {
+        {
+            std.log.info("deserializing", .{});
+            if (params[i].type.? == NodeContext) {
+                fields[i] = node;
+            } else if (params[i].type.? == std.mem.Allocator) {
+                fields[i] = std.heap.c_allocator;
+            } else {
+                if (arg >= js_args.len) {
+                    node.throw(error.MissingArguments);
+                    unreachable;
+                }
+                fields[i] = node.deserializeValue(
+                    p.type.?,
+                    NodeValue{
+                        .napi_env = node.napi_env,
+                        .napi_value = js_args[arg],
+                    },
+                ) catch |err| {
+                    node.handleError(err);
+                    unreachable;
+                };
+                arg += 1;
+            }
+        }
+    }
+
+    const ret = @call(.auto, fun, fields);
+    const res = switch (@typeInfo(@TypeOf(ret))) {
+        .error_union => ret catch |err| {
+            node.handleError(err);
+            return null;
+        },
+        else => ret,
+    };
+
+    if (@TypeOf(res) != void) {
+        return (node.serialize(res) catch |err| {
+            node.handleError(err);
+            return null;
+        }).napi_value;
+    }
+
+    return (node.getUndefined() catch {
+        @panic("kablammo");
+    }).napi_value;
 }
