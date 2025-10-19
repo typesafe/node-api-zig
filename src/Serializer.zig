@@ -18,7 +18,7 @@ pub fn serialize(env: c.napi_env, value: anytype) !c.napi_value {
 
     switch (info) {
         .null => try s2e(c.napi_get_null(env, &res)),
-        .undefined => try s2e(c.napi_get_undefined(env, &res)),
+        .void, .undefined => try s2e(c.napi_get_undefined(env, &res)),
         .bool => try s2e(c.napi_get_boolean(env, value, &res)),
         .comptime_int => {
             try s2e(c.napi_create_int32(env, value, &res));
