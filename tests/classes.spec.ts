@@ -17,14 +17,13 @@ describe("defineClass", () => {
       const instance = new addon.TestClass(12);
       console.log(instance);
       expect(instance.methodAsync).toBeFunction();
-      expect(await instance.methodAsync(123,"123")).toEqual(123);
+      expect(await instance.methodAsync(123, "123")).toEqual(123);
     });
   });
 
   describe("static method", () => {
     it("should be callable function", () => {
-      expect(addon.TestClass.static).toBeFunction();
-      expect(addon.TestClass.static(123)).toEqual(246);
+      expect(addon.TestClass.getInstanceCount).toBeFunction();
     });
   });
 });

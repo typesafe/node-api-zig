@@ -39,17 +39,15 @@ pub const NodeContext = struct {
         return self.get(c.napi_get_undefined);
     }
 
-    // _fields -> private fields
-    // fields -> props
-    // init -> ctor
-    // deinit -> finalizer
-    // pub fn w/ self -> method
-
     pub fn defineClass(self: Self, comptime T: anytype) !NodeValue {
-        const lifetime = getLifetimeHandler(T, @field(T, "init"), null);
+        // @typeInfo(T).@"struct".decls
+        // if (!@hasDecl(T, "init")) {
+        //     @compileError("Class definitions must have init method to serve as JS constructor.");
+        // }
 
-        var class: c.napi_value = undefined;
+        const lifetime = getLifetimeHandler(T);
         const props = getProps(T);
+        var class: c.napi_value = undefined;
         s2e(c.napi_define_class(self.napi_env, "Foo", 3, lifetime.init, null, props.len, props.ptr, &class)) catch unreachable;
 
         return NodeValue.init(self.napi_env, class);
@@ -170,7 +168,9 @@ pub const NodeContext = struct {
         return prop_descriptors[0..prop_descriptors_len];
     }
 
-    fn getLifetimeHandler(comptime T: anytype, comptime init_fn: anytype, comptime _: anytype) type {
+    fn getLifetimeHandler(comptime T: anytype) type {
+        const init_fn = @field(T, "init");
+        const deinit_fn = @field(T, "deinit");
         return struct {
             pub fn init(env: c.napi_env, cb: c.napi_callback_info) callconv(.c) c.napi_value {
                 std.log.info("init {any} {any} {any}", .{ env, cb, T });
@@ -243,6 +243,8 @@ pub const NodeContext = struct {
 
                 if (data) |ptr| {
                     const self: *T = @ptrCast(@alignCast(ptr));
+                    _ = try @call(.auto, deinit_fn, .{self.*});
+
                     std.log.info(" Finalizer data {any} {any}", .{ data, self });
                     freee(T, self);
                 }

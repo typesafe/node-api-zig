@@ -3,16 +3,26 @@ pub const c = @cImport({
     @cInclude("node_api.h");
 });
 
-// pub fn Wrap(comptime T: type, comptime decls: anytype) type {
+// pub const cc = wrapCLib(c);
+
+// fn wrapCLib(comptime T: type) type {
+//     const decls = @typeInfo(T).@"struct".decls;
+
 //     const N = decls.len;
 
-//     var fields: [N]builtin.Type.StructField = undefined;
+//     var fields: [N]std.builtin.Type.StructField = undefined;
 
 //     inline for (decls, 0..) |d, i| {
+//         const wrapper = opaque {
+//             pub fn f() NodeApiError!void {}
+//         }.f;
+//         const f : std.builtin.Type.Fn = .{
+//             .
+//         };
 //         fields[i] = .{
 //             .name = d.name,
 //             .type = d.ty,
-//             .default_value = null,          // keep it simple; you can wire a default if you want
+//             .default_value = null, // keep it simple; you can wire a default if you want
 //             .is_comptime = false,
 //             .alignment = @alignOf(d.ty),
 //         };
@@ -22,7 +32,7 @@ pub const c = @cImport({
 //         .Struct = .{
 //             .layout = .Auto,
 //             .fields = &fields,
-//             .decls = &.{},                  // no nested declarations (constants/functions) added here
+//             .decls = &.{}, // no nested declarations (constants/functions) added here
 //             .is_tuple = false,
 //         },
 //     });

@@ -27,7 +27,10 @@ pub fn serialize(env: c.napi_env, value: anytype) !c.napi_value {
             if (i.signedness == .signed) {
                 try s2e(c.napi_create_int32(env, value, &res));
             } else {
-                try s2e(c.napi_create_uint32(env, value, &res));
+                switch (i.bits) {
+                    64 => try s2e(c.napi_create_bigint_uint64(env, value, &res)),
+                    else => try s2e(c.napi_create_uint32(env, value, &res)),
+                }
             }
         },
         .float, .comptime_float => try s2e(c.napi_create_double(env, value, &res)),
@@ -124,6 +127,7 @@ pub fn serialize(env: c.napi_env, value: anytype) !c.napi_value {
                 @compileError("Untagged unions are not supported for JSON serialization.");
             }
         },
+
         else => @compileError(std.fmt.comptimePrint("Cannot serialize value of type {s}", .{@typeName(T)})),
     }
 
