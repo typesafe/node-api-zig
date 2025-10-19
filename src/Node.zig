@@ -13,22 +13,11 @@ const NodeValue = NodeValues.NodeValue;
 /// Represents a context that the underlying Node-API implementation can use to persist VM-specific state.
 pub const NodeContext = struct {
     const Self = @This();
-    const allocator: std.mem.Allocator = std.heap.c_allocator;
 
     napi_env: c.napi_env,
 
     pub fn init(env: c.napi_env) Self {
         return Self{ .napi_env = env };
-    }
-
-    pub fn allocateSentinel(_: Self, T: type, n: usize) !void {
-        try allocator.allocSentinel(T, n, 0);
-        // TODO try s2e(c.napi_adjust_external_memory(self.napi_env,n, null));
-    }
-
-    pub fn free(_: Self, memory: anytype) !void {
-        try allocator.free(memory);
-        // TODO try s2e(c.napi_adjust_external_memory(self.napi_env, , null));
     }
 
     pub fn getNull(self: Self) !NodeValue {
@@ -107,7 +96,7 @@ pub const NodeContext = struct {
                     return null;
                 }
                 const self: *T = @ptrCast(@alignCast(raw.?));
-                @field(self, field) = node.deserializeValue(fieldType, NodeValue{
+                @field(self, field) = node.deserialize(fieldType, NodeValue{
                     .napi_env = env,
                     .napi_value = argv[0],
                 }) catch unreachable;
@@ -200,7 +189,7 @@ pub const NodeContext = struct {
                     if (params[i].type.? == NodeContext) {
                         fields[i] = node;
                     } else {
-                        fields[i] = node.deserializeValue(
+                        fields[i] = node.deserialize(
                             params[i].type.?,
                             NodeValue{
                                 .napi_env = node.napi_env,
@@ -402,14 +391,14 @@ pub const NodeContext = struct {
                         if (params[i].type.? == NodeContext) {
                             s.*.params[i] = node;
                         } else if (params[i].type.? == std.mem.Allocator) {
-                            s.*.params[i] = allocator;
+                            s.*.params[i] = std.heap.c_allocator;
                         } else {
                             // TODO: only serialized or wrapped values allowed in async
                             if (arg >= argc) {
                                 node.throw(error.MissingArguments);
                                 return null;
                             }
-                            s.*.params[i] = node.deserializeValue(
+                            s.*.params[i] = node.deserialize(
                                 p.type.?,
                                 NodeValue{
                                     .napi_env = node.napi_env,
@@ -492,12 +481,8 @@ pub const NodeContext = struct {
         };
     }
 
-    pub fn deserializeValue(self: Self, comptime T: type, value: NodeValue) !T {
-        return Serializer.deserializeValue(self.napi_env, T, value.napi_value);
-    }
-
-    pub fn deserializeString(self: Self, value: NodeValue) ![]const u8 {
-        return Serializer.deserializeString(self.napi_env, value.napi_value);
+    pub fn deserialize(self: Self, comptime T: type, value: NodeValue) !T {
+        return try Serializer.deserialize(self.napi_env, T, value.napi_value, std.heap.c_allocator);
     }
 
     pub fn handleError(self: Self, err: anyerror) void {
@@ -622,7 +607,7 @@ inline fn callFunction(
                     node.throw(error.MissingArguments);
                     unreachable;
                 }
-                fields[i] = node.deserializeValue(
+                fields[i] = node.deserialize(
                     p.type.?,
                     NodeValue{
                         .napi_env = node.napi_env,

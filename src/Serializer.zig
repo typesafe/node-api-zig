@@ -3,12 +3,14 @@ const lib = @import("c.zig");
 const c = lib.c;
 const s2e = lib.statusToError;
 const NodeValue = @import("node_values.zig").NodeValue;
+const NodeObject = @import("node_values.zig").NodeObject;
 
 /// Converts a Zig value to a Node-API value.
 pub fn serialize(env: c.napi_env, value: anytype) !c.napi_value {
     const T = @TypeOf(value);
 
-    if (T == NodeValue) {
+    // TODO: complete
+    if (T == NodeValue or T == NodeObject) {
         return value.napi_value;
     }
 
@@ -21,14 +23,35 @@ pub fn serialize(env: c.napi_env, value: anytype) !c.napi_value {
         .void, .undefined => try s2e(c.napi_get_undefined(env, &res)),
         .bool => try s2e(c.napi_get_boolean(env, value, &res)),
         .comptime_int => {
-            try s2e(c.napi_create_int32(env, value, &res));
+            if (value < 0) {
+                switch (@bitSizeOf(T)) {
+                    0...32 => {
+                        try s2e(c.napi_create_int32(env, value, &res));
+                    },
+                    33...64 => {
+                        try s2e(c.napi_create_int64(env, value, &res));
+                    },
+                    else => |s| @compileError(std.fmt.comptimePrint("Cannot serialize value of type {s}, unsupported bitsize", .{ @typeName(T), s })),
+                }
+                try s2e(c.napi_create_int32(env, value, &res));
+            } else {
+                switch (@bitSizeOf(T)) {
+                    0...32 => {
+                        try s2e(c.napi_create_uint32(env, value, &res));
+                    }, //
+                    else => {
+                        try s2e(c.napi_create_bigint_uint64(env, value, &res));
+                    },
+                    // else => @compileError(std.fmt.comptimePrint("Cannot serialize value of type {s}, unsupported bitsize {any}", .{ @typeName(T), @bitSizeOf(T) })),
+                }
+            }
         },
         .int => |i| {
             if (i.signedness == .signed) {
                 try s2e(c.napi_create_int32(env, value, &res));
             } else {
                 switch (i.bits) {
-                    64 => try s2e(c.napi_create_bigint_uint64(env, value, &res)),
+                    33...64 => try s2e(c.napi_create_bigint_uint64(env, value, &res)),
                     else => try s2e(c.napi_create_uint32(env, value, &res)),
                 }
             }
@@ -134,13 +157,13 @@ pub fn serialize(env: c.napi_env, value: anytype) !c.napi_value {
     return res;
 }
 
-pub fn deserializeString(env: c.napi_env, value: c.napi_value) ![]u8 {
-    var len: usize = undefined;
-    try s2e(c.napi_get_value_string_latin1(env, value, null, 0, &len));
-    const buf = try std.heap.c_allocator.allocSentinel(u8, len, 0);
-    try s2e(c.napi_get_value_string_latin1(env, value, buf, len + 1, &len));
-    return buf;
-}
+// pub fn deserializeString(env: c.napi_env, value: c.napi_value, allocator: std.mem.Allocator) ![]u8 {
+//     var len: usize = undefined;
+//     try s2e(c.napi_get_value_string_latin1(env, value, null, 0, &len));
+//     const buf = try std.heap.c_allocator.allocSentinel(u8, len, 0);
+//     try s2e(c.napi_get_value_string_latin1(env, value, buf, len + 1, &len));
+//     return buf;
+// }
 
 // pub fn deserializeStruct(self: Self, comptime T: type, value: c.napi_value, allocator: std.mem.Allocator) ![]const u8 {
 //     const info = @typeInfo(T);
@@ -157,11 +180,16 @@ pub fn deserializeString(env: c.napi_env, value: c.napi_value) ![]u8 {
 // }
 
 /// Converts scalar JS values to Zig values.
-pub fn deserializeValue(env: c.napi_env, comptime T: type, value: c.napi_value) !T {
+pub fn deserialize(env: c.napi_env, comptime T: type, value: c.napi_value, allocator: std.mem.Allocator) !T {
     const info = @typeInfo(T);
 
     var v: T = undefined;
     switch (info) {
+        .float => {
+            var tmp: f64 = undefined;
+            try s2e(c.napi_get_value_double(env, value, &tmp));
+            v = @floatCast(tmp);
+        },
         .bool => try s2e(c.napi_get_value_bool(env, value, &v)),
         .int => |i| {
             if (i.signedness == .signed) {
@@ -173,12 +201,10 @@ pub fn deserializeValue(env: c.napi_env, comptime T: type, value: c.napi_value) 
                 }
             } else {
                 switch (i.bits) {
-                    32 => try s2e(c.napi_get_value_uint32(env, value, &v)),
-                    // TODO
-                    64 => {
+                    1...64 => {
                         var tmp: u32 = undefined;
                         try s2e(c.napi_get_value_uint32(env, value, &tmp));
-                        return @as(u64, tmp);
+                        return @intCast(tmp);
                     },
 
                     // 32 => .{ comptime_int, c.napi_get_value_uint32 },
@@ -187,18 +213,30 @@ pub fn deserializeValue(env: c.napi_env, comptime T: type, value: c.napi_value) 
             }
         },
         .optional => |o| {
-            v = try deserializeValue(env, o.child, value);
+            v = try deserialize(env, o.child, value, allocator);
         },
         .pointer => |p| {
             switch (p.size) {
                 .one => {
+                    // pointers are considered wrapped
                     try s2e(c.napi_unwrap(env, value, @as([*c]?*anyopaque, @ptrCast(&v))));
                 },
                 .slice => {
-                    v = try deserializeString(env, value);
+                    switch (p.child) {
+                        u8 => {
+                            var len: usize = undefined;
+                            try s2e(c.napi_get_value_string_utf8(env, value, null, 0, &len));
+                            const buf = try std.heap.c_allocator.allocSentinel(u8, len, 0);
+                            try s2e(c.napi_get_value_string_utf8(env, value, buf, len + 1, &len));
+                            return buf;
+                        },
+                        else => {
+                            @compileError("only u8 slices");
+                        },
+                    }
                 },
                 else => {
-                    @compileError("only u8 slices");
+                    @compileError("one or slice pointers");
                 },
             }
         },

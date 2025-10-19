@@ -1,6 +1,7 @@
 const std = @import("std");
 const node_api = @import("node-api");
 const Stats = @import("Stats.zig");
+const WrapTarget = @import("WrapTarget.zig");
 
 // allocated (JS `new TestClass()`) and freed/destroyed (GC finalizer) automatically
 // including fields!
@@ -55,21 +56,27 @@ pub fn callMe(self: Self, ctx: node_api.NodeContext, v: i32, s: []u8) !i32 {
     return v + self.foo;
 }
 
+pub fn handleWrappedValue(_: Self, wrapped: *WrapTarget) !void {
+    // self.str = s;
+
+    std.log.debug("callMe called with wrapped value {*} {any}", .{ wrapped, wrapped });
+}
+
 pub fn methodThatOwnsParamMemory(self: Self, v: i32, s: []u8) !i32 {
     std.log.debug("callMe called with arguments <{any}> and '{s}'", .{ v, s });
     return v + self.foo;
 }
 
 /// NodeValues are "by ref"
-pub fn callWithParamsByRef(_: Self, _: node_api.NodeContext, v: node_api.NodeValue, s: node_api.NodeValue) !node_api.NodeValue {
-    std.log.debug("callWithParamsByRef called with arguments <{any}> and '{s}'", .{ v, try s.deserializeValue([]u8) });
+pub fn callWithParamsByRef(_: Self, node: node_api.NodeContext, v: node_api.NodeValue, s: node_api.NodeValue) !node_api.NodeValue {
+    std.log.debug("callWithParamsByRef called with arguments <{any}> and '{s}'", .{ v, try node.deserialize([]u8, s) });
     return v;
 }
 
 /// Async method will return Promise<ReturnType>
 /// mapped to `const res = await instance.method("foo")`
-pub fn methodAsync(_: Self, _: node_api.NodeContext, v: node_api.NodeValue, s: node_api.NodeValue) !node_api.NodeValue {
+pub fn methodAsync(_: Self, node: node_api.NodeContext, v: node_api.NodeValue, s: node_api.NodeValue) !node_api.NodeValue {
     std.log.debug("in async class method {any}", .{std.Thread.getCurrentId()});
-    std.log.debug("callWithParamsByRef called with arguments <{any}> and '{s}'", .{ v, try s.deserializeValue([]u8) });
+    std.log.debug("callWithParamsByRef called with arguments <{any}> and '{s}'", .{ v, try node.deserialize([]u8, s) });
     return v;
 }

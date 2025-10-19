@@ -42,10 +42,6 @@ pub const NodeValue = struct {
         return .{ .napi_env = env, .napi_value = value };
     }
 
-    pub fn deserializeValue(self: NodeValue.Self, comptime T: type) !T {
-        return Serializer.deserializeValue(self.napi_env, T, self.napi_value);
-    }
-
     pub fn typeof(self: NodeValue.Self) !NodeValueType {
         var result: c.napi_valuetype = undefined;
         try s2e(c.napi_typeof(self.napi_env, self.napi_env, &result));
@@ -92,6 +88,8 @@ pub const NodeValue = struct {
 
         return error.NodeValueIsNoObject;
     }
+
+    // TODO: more as... methods
 
     pub fn isArray(self: NodeValue.Self) !bool {
         return self.is(c.napi_is_array);
@@ -145,6 +143,10 @@ pub const NodeObject = struct {
             .napi_value = self.napi_value,
         };
     }
+
+    // set prop
+
+    // get prop
 };
 
 pub const NodeArray = struct {
@@ -165,4 +167,6 @@ pub const NodeArray = struct {
             .napi_value = self.napi_value,
         };
     }
+
+    // get/set [], push, splice, etc.
 };

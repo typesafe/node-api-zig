@@ -41,6 +41,16 @@ fn init(node: node_api.NodeContext) !?node_api.NodeValue {
 import fromZig from(zig-module.node);
 ```
 
+## Type Conversions
+
+Function parameters and return types can be
+- native Zig types (unsupported types will result in compile time errors)
+- one of the NodeValue types to access values by reference.
+
+Native values and NodeValue instance can be converted using the NodeSerializer.
+- deserialize(comptime T: type, value: NodeValue, allocator. Allocator) T
+- serialize(value: anytype) NodeValue
+
 ## Define functions
 
 ## Define async functions

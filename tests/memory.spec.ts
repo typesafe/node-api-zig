@@ -2,15 +2,19 @@ import addon from "node-api-test-module";
 import { describe, it, expect } from "bun:test";
 import { gc, sleep } from "bun";
 
+// this will be GC'ed (and finalized)
 new addon.TestClass(12);
-const count = addon.TestClass.getInstanceCount();
 
 describe("struct.deinit", () => {
   it("should call deinit", async () => {
-    expect(count).toEqual(1n);
+    const count = addon.TestClass.getInstanceCount();
+    expect(count).toBeGreaterThan(0); // other tests can influence this
+
     gc(true);
+
     // give finalizers a chance to kick in
-    await sleep(0);
+    await sleep(10);
+
     expect(addon.TestClass.getInstanceCount()).toEqual(count - 1n);
   });
 });

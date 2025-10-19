@@ -26,4 +26,13 @@ describe("defineClass", () => {
       expect(addon.TestClass.getInstanceCount).toBeFunction();
     });
   });
+
+  describe("method should support wrapped values", () => {
+    it("should be callable function", () => {
+      new addon.TestClass(12).handleWrappedValue(addon.wrappedInstance);
+      addon.wrappedInstance.foo = 666;
+      addon.wrappedInstance.bar = "updated";
+      new addon.TestClass(12).handleWrappedValue(addon.wrappedInstance);
+    });
+  });
 });
