@@ -169,6 +169,14 @@ pub fn deserializeValue(env: c.napi_env, comptime T: type, value: c.napi_value) 
                 }
             } else {
                 switch (i.bits) {
+                    32 => try s2e(c.napi_get_value_uint32(env, value, &v)),
+                    // TODO
+                    64 => {
+                        var tmp: u32 = undefined;
+                        try s2e(c.napi_get_value_uint32(env, value, &tmp));
+                        return @as(u64, tmp);
+                    },
+
                     // 32 => .{ comptime_int, c.napi_get_value_uint32 },
                     else => @compileError(std.fmt.comptimePrint("Cannot deserialize value of type {s}", .{@typeName(T)})),
                 }

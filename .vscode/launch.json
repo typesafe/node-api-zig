@@ -11,6 +11,22 @@
       "cwd": "./tests",
       "program": "/run/current-system/sw/bin/bun",
       "args": ["test"]
+    },
+    {
+      "name": "test defineAsyncFunction",
+      "type": "lldb",
+      "request": "launch",
+      "cwd": "./tests",
+      "program": "/run/current-system/sw/bin/bun",
+      "args": ["test", "--test-name-pattern", "defineAsyncFunction"]
+    },
+    {
+      "name": "test defineClass",
+      "type": "lldb",
+      "request": "launch",
+      "cwd": "./tests",
+      "program": "/run/current-system/sw/bin/bun",
+      "args": ["test", "--test-name-pattern", "defineClass"]
     }
   ]
 }

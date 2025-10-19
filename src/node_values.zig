@@ -38,6 +38,10 @@ pub const NodeValue = struct {
     napi_env: c.napi_env,
     napi_value: c.napi_value,
 
+    pub fn init(env: c.napi_env, value: c.napi_value) Self {
+        return .{ .napi_env = env, .napi_value = value };
+    }
+
     pub fn deserializeValue(self: NodeValue.Self, comptime T: type) !T {
         return Serializer.deserializeValue(self.napi_env, T, self.napi_value);
     }

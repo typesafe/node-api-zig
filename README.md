@@ -2,6 +2,20 @@ The `node-api` Zig package provides [Node-API](https://nodejs.org/api/n-api.html
 
 The module relies heavily on conventions to simplify memory & lifetime management, async processing, type conversions, etc.
 
+# Features
+
+
+- define classes by convention, incl. support for init, deinit, instance methods, satic methods, fields & allocator injection.
+- wrapping object instances, similar to defining classes but for instances created in Zig
+- convention-based mapping of function (and method) declarations, including async support (Promises)
+- memory management support Zig idoms for allocation of memory
+- serialization of JS values
+  - by value
+  - by reference
+    - Zig-managed values (wrapped)
+    - or JS-managed values (`NodeValue` et.al.)
+- Idiomatic error handling
+
 # Getting started
 
 TODO

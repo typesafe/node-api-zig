@@ -1,28 +1,19 @@
 const std = @import("std");
+
 const lib = @import("c.zig");
-
-const NodeValues = @import("node_values.zig");
-const NodeValue = NodeValues.NodeValue;
-
-const Serializer = @import("Serializer.zig");
-
 const c = lib.c;
 const NodeApiError = lib.NodeApiError;
 const s2e = lib.statusToError;
 
-/// Defines a NodeFunction with the specified nuymber of arguments.
-pub fn NodeFunction(comptime arg_count: usize) type {
-    if (arg_count > 0) {
-        return fn (ctx: NodeContext, args: [arg_count]NodeValue, thiz: ?NodeValue) anyerror!?NodeValue;
-    }
+const Serializer = @import("Serializer.zig");
 
-    return fn (ctx: NodeContext, thiz: ?NodeValue) anyerror!?NodeValue;
-}
+const NodeValues = @import("node_values.zig");
+const NodeValue = NodeValues.NodeValue;
 
 /// Represents a context that the underlying Node-API implementation can use to persist VM-specific state.
 pub const NodeContext = struct {
     const Self = @This();
-    pub var allocator: std.mem.Allocator = std.heap.c_allocator;
+    const allocator: std.mem.Allocator = std.heap.c_allocator;
 
     napi_env: c.napi_env,
 
@@ -61,10 +52,7 @@ pub const NodeContext = struct {
         const props = getProps(T);
         s2e(c.napi_define_class(self.napi_env, "Foo", 3, lifetime.init, null, props.len, props.ptr, &class)) catch unreachable;
 
-        // s2e(c.napi_create_object(self.napi_env, &class)) catch unreachable;
-        // s2e(c.napi_define_properties(self.napi_env, class, prop_descriptors_len, &prop_descriptors)) catch unreachable;
-
-        return .{ .napi_env = self.napi_env, .napi_value = class };
+        return NodeValue.init(self.napi_env, class);
     }
 
     fn unwrapInstance(comptime T: anytype, env: c.napi_env, value: c.napi_value) !*T {
@@ -139,18 +127,25 @@ pub const NodeContext = struct {
         // so we need to track the len separately
         var prop_descriptors_len: usize = 0;
 
+        if (@hasDecl(T, "instance_count")) {
+            std.log.debug("`instance_count` exists, type = {s}\n", .{@typeName(@TypeOf(T.instance_count))});
+        } else {
+            std.log.debug("instance_count does not exist", .{});
+        }
+
         inline for (info.decls) |decl| {
             if (!std.mem.eql(u8, decl.name, "init") and !std.mem.eql(u8, decl.name, "deinit")) {
-                std.log.debug("defining method {s}.{s}", .{ @typeName(T), decl.name });
+                std.log.debug("defining method {s}.{s} {any}", .{ @typeName(T), decl.name, decl.name.len });
+                const fun = @field(T, decl.name);
 
                 prop_descriptors[prop_descriptors_len] = c.napi_property_descriptor{
                     .utf8name = decl.name,
                     .name = null,
-                    .method = wrapFn(T, @field(T, decl.name)),
+                    .method = if (endsWith(decl.name, "Async")) wrapAsyncFunction(T, fun) else wrapFn(T, fun),
                     .getter = null,
                     .setter = null,
                     .value = null,
-                    .attributes = c.napi_default,
+                    .attributes = if (isStatic(T, fun)) c.napi_static else c.napi_default,
                     .data = null,
                 };
                 prop_descriptors_len += 1;
@@ -273,31 +268,37 @@ pub const NodeContext = struct {
         };
     }
 
+    fn isStatic(comptime T: anytype, comptime fun: anytype) bool {
+        const params = switch (@typeInfo(@TypeOf(fun))) {
+            .@"fn" => |t| t.params,
+            else => @compileError("fun must be a function"),
+        };
+
+        return params.len == 0 or params[0].type != T;
+    }
+
     fn wrapFn(comptime T: anytype, comptime fun: anytype) fn (env: c.napi_env, cb: c.napi_callback_info) callconv(.c) c.napi_value {
+        const params = switch (@typeInfo(@TypeOf(fun))) {
+            .@"fn" => |t| t.params,
+            else => @compileError("`fun` must be a function."),
+        };
+
         return opaque {
             pub fn f(env: c.napi_env, cb: c.napi_callback_info) callconv(.c) c.napi_value {
-                const params = switch (@typeInfo(@TypeOf(fun))) {
-                    .@"fn" => |t| t.params,
-                    else => @compileError("fun must be a function"),
-                };
-
                 const node = NodeContext{ .napi_env = env };
                 var this_arg: c.napi_value = undefined;
                 var args: [params.len]c.napi_value = undefined;
-                var argc = params.len;
+                var argc: usize = params.len;
 
                 s2e(c.napi_get_cb_info(env, cb, &argc, &args, &this_arg, null)) catch |err| {
                     node.handleError(err);
                     return null;
                 };
 
-                // if (ctor and (params.len == 0 or params[0].type != T)) {
-                //     @compileError("first argument must be self T");
-                // }
-
                 var fields: TupleTypeOf(params) = undefined;
-                // std.log.info("fields: {any}", .{fields});
-                if (params[0].type.? == T) {
+
+                const is_static = params.len == 0 or params[0].type != T;
+                if (!is_static) {
                     var raw: ?*anyopaque = null;
                     if (c.napi_unwrap(env, this_arg, &raw) != c.napi_ok or raw == null) {
                         _ = c.napi_throw_error(env, null, "unwrap failed");
@@ -307,13 +308,20 @@ pub const NodeContext = struct {
                     fields[0] = self.*;
                 }
 
+                const offset = if (is_static) 0 else 1;
                 var arg: u8 = 0;
-                inline for (params[1..], 1..) |p, i| {
+                inline for (params[offset..], offset..) |p, i| {
                     {
                         std.log.info("deserializing", .{});
                         if (params[i].type.? == NodeContext) {
                             fields[i] = node;
+                        } else if (params[i].type.? == std.mem.Allocator) {
+                            fields[i] = allocator;
                         } else {
+                            if (arg >= argc) {
+                                node.throw(error.MissingArguments);
+                                return null;
+                            }
                             fields[i] = node.deserializeValue(
                                 p.type.?,
                                 NodeValue{
@@ -321,8 +329,8 @@ pub const NodeContext = struct {
                                     .napi_value = args[arg],
                                 },
                             ) catch |err| {
-                                std.log.info("deserializing {any}", .{err});
-                                @panic("kablammooo");
+                                node.handleError(err);
+                                return null;
                             };
                             arg += 1;
                         }
@@ -375,181 +383,131 @@ pub const NodeContext = struct {
         return NodeValue{ .napi_env = self.napi_env, .napi_value = js_obj };
     }
 
-    /// Creates a JS-accessible function.
-    pub fn createFunction(self: Self, comptime arg_count: usize, fun: NodeFunction(arg_count)) !NodeValue {
-        const f = opaque {
-            pub fn f(env: c.napi_env, cb: c.napi_callback_info) callconv(.c) c.napi_value {
-                const node = NodeContext{ .napi_env = env };
-
-                var this_arg: c.napi_value = undefined;
-                var args: [arg_count]c.napi_value = undefined;
-                var argc = arg_count;
-
-                s2e(c.napi_get_cb_info(env, cb, &argc, &args, &this_arg, null)) catch |err| {
-                    node.handleError(err);
-                    return null;
-                };
-
-                const this = if (this_arg == null) null else NodeValue{ .napi_env = env, .napi_value = this_arg };
-
-                if (argc < arg_count) {
-                    std.log.warn("arg count {any} < {any}", .{ argc, arg_count });
-                } else if (argc > arg_count) {
-                    std.log.warn("arg count {any} > {any}", .{ argc, arg_count });
-                }
-
-                const ret = if (arg_count == 0)
-                    fun(node, this)
-                else
-                    fun(node, wrapNapiValues(env, arg_count, args), this);
-
-                const res = ret catch |err| {
-                    node.handleError(err);
-                    return null;
-                };
-
-                return if (res) |v| v.napi_value else null;
-            }
-        }.f;
-
+    /// Defines a JS-accessible function.
+    ///
+    ///
+    /// `fun` must be a function with zero or more parameters. Parameters and return type can be of type
+    /// - `NodeValue`: this is useful to access JS objects by reference.
+    /// - a supported Zig type: The JS function arguments will be deserialized.
+    ///
+    pub fn defineFunction(self: Self, comptime fun: anytype) !NodeValue {
         var function: c.napi_value = undefined;
-        try s2e(c.napi_create_function(self.napi_env, null, 4, f, null, &function));
+        try s2e(c.napi_create_function(self.napi_env, null, 0, wrapFn(null, fun), null, &function));
         return NodeValue{ .napi_env = self.napi_env, .napi_value = function };
     }
 
-    /// Creates a JS-accessible function.
-    ///
-    /// TODO: `this` support?
-    ///
-    /// `fun` must be a function with zero or more parameters. Parameters can be of type
-    /// - `NodeValue`: this is usefule to access JS objects by reference.
-    /// - a supported Zig type: The JS function arguments will be deserialized.
-    ///
-    pub fn createFunc(self: Self, comptime fun: anytype) !NodeValue {
-        const f = opaque {
-            pub fn f(env: c.napi_env, cb: c.napi_callback_info) callconv(.c) c.napi_value {
-                const params = switch (@typeInfo(@TypeOf(fun))) {
-                    .@"fn" => |t| t.params,
-                    else => @compileError("fun must be a function"),
-                };
+    pub fn defineAsyncFunction(self: Self, fun: anytype) !NodeValue {
+        var function: c.napi_value = undefined;
+        try s2e(c.napi_create_function(self.napi_env, null, 4, wrapAsyncFunction(null, fun), null, &function));
+        return NodeValue{ .napi_env = self.napi_env, .napi_value = function };
+    }
 
+    /// Creates a JS-accessible Async function.
+    fn wrapAsyncFunction(comptime T: anytype, fun: anytype) fn (env: c.napi_env, cb: c.napi_callback_info) callconv(.c) c.napi_value {
+        const params = switch (@typeInfo(@TypeOf(fun))) {
+            .@"fn" => |t| t.params,
+            else => @compileError("`fun` must be a function."),
+        };
+        const return_type = switch (@typeInfo(@TypeOf(fun))) {
+            .@"fn" => |t| t.return_type,
+            else => @compileError("`fun` must be a function."),
+        };
+
+        return opaque {
+            pub fn f(env: c.napi_env, cb: c.napi_callback_info) callconv(.c) c.napi_value {
                 const node = NodeContext{ .napi_env = env };
                 var this_arg: c.napi_value = undefined;
                 var args: [params.len]c.napi_value = undefined;
-                var argc = params.len;
+                var argc: usize = params.len;
 
                 s2e(c.napi_get_cb_info(env, cb, &argc, &args, &this_arg, null)) catch |err| {
                     node.handleError(err);
                     return null;
                 };
 
-                // const this = if (this_arg == null) null else NodeValue{ .napi_env = env, .napi_value = this_arg };
-                var fields: TupleTypeOf(params) = undefined;
-                inline for (0..params.len) |i| {
-                    fields[i] = node.deserializeValue(
-                        params[i].type.?,
-                        NodeValue{
-                            .napi_env = node.napi_env,
-                            .napi_value = args[i],
-                        },
-                    ) catch {
-                        @panic("kablammoho");
-                    };
+                const ThisAsyncState = AsyncState(params, return_type.?);
+                const s = std.heap.c_allocator.create(ThisAsyncState) catch {
+                    @panic("bam");
+                };
+
+                const is_static = params.len == 0 or params[0].type != T;
+                if (!is_static) {
+                    var raw: ?*anyopaque = null;
+                    if (c.napi_unwrap(env, this_arg, &raw) != c.napi_ok or raw == null) {
+                        _ = c.napi_throw_error(env, null, "unwrap failed");
+                        return null;
+                    }
+                    const self: *T = @ptrCast(@alignCast(raw.?));
+                    s.*.params[0] = self.*;
                 }
 
-                const ret = @call(.auto, fun, fields);
-
-                const res = ret catch |err| {
-                    node.handleError(err);
-                    return null;
-                };
-
-                return (node.serialize(res) catch |err| {
-                    node.handleError(err);
-                    return null;
-                }).napi_value;
-            }
-        }.f;
-
-        var function: c.napi_value = undefined;
-        try s2e(c.napi_create_function(self.napi_env, null, 0, f, null, &function));
-        return NodeValue{ .napi_env = self.napi_env, .napi_value = function };
-    }
-
-    /// Creates a JS-accessible function.
-    pub fn createAsyncFunction(self: Self, comptime arg_count: usize, fun: NodeFunction(arg_count)) !NodeValue {
-        const f = opaque {
-            pub fn f(env: c.napi_env, cb: c.napi_callback_info) callconv(.c) c.napi_value {
-                const n = NodeContext{ .napi_env = env };
-
-                var this_arg: c.napi_value = undefined;
-                var args: [arg_count]c.napi_value = undefined;
-                var argc = arg_count;
-
-                s2e(c.napi_get_cb_info(env, cb, &argc, &args, &this_arg, null)) catch |err| {
-                    n.handleError(err);
-                    return null;
-                };
-                const this = if (this_arg == null) null else NodeValue{ .napi_env = env, .napi_value = this_arg };
-
-                const handler = opaque {
-                    pub fn work(e: c.napi_env, data: ?*anyopaque) callconv(.c) void {
-                        std.log.info("worker thread {any}", .{std.Thread.getCurrentId()});
-                        const node = NodeContext{ .napi_env = e };
-                        var state: *AsyncState = @ptrCast(@alignCast(data));
-
-                        // std.log.info("state {any}", .{state});
-                        // std.log.info("state {any}", .{state});
-                        const ret = if (arg_count == 0)
-                            fun(node, state.this)
-                        else
-                            fun(node, wrapNapiValues(e, arg_count, state.args), this);
-
-                        std.log.info("ret {any}", .{ret});
-                        const res = ret catch |err| {
-                            std.log.info("ERROR {any}", .{err});
-                            node.handleError(err);
-                            state.err = err;
-                            return;
-                        };
-
-                        std.log.info("RETURN {any}", .{res});
-                        if (res) |v| {
-                            state.return_value = v.napi_value;
+                const offset = if (is_static) 0 else 1;
+                var arg: u8 = 0;
+                inline for (params[offset..], offset..) |p, i| {
+                    {
+                        std.log.info("deserializing", .{});
+                        if (params[i].type.? == NodeContext) {
+                            s.*.params[i] = node;
+                        } else if (params[i].type.? == std.mem.Allocator) {
+                            s.*.params[i] = allocator;
+                        } else {
+                            // TODO: only serialized or wrapped values allowed in async
+                            if (arg >= argc) {
+                                node.throw(error.MissingArguments);
+                                return null;
+                            }
+                            s.*.params[i] = node.deserializeValue(
+                                p.type.?,
+                                NodeValue{
+                                    .napi_env = node.napi_env,
+                                    .napi_value = args[arg],
+                                },
+                            ) catch |err| {
+                                node.handleError(err);
+                                return null;
+                            };
+                            arg += 1;
                         }
                     }
+                }
 
-                    pub fn resolve(c_env: c.napi_env, _: c_uint, data: ?*anyopaque) callconv(.c) void {
-                        var state: *AsyncState = @ptrCast(@alignCast(data));
+                const handler = opaque {
+                    pub fn work(_: c.napi_env, data: ?*anyopaque) callconv(.c) void {
+                        std.log.info("worker thread {any}", .{std.Thread.getCurrentId()});
 
-                        std.log.info("DATA {any}", .{data.?});
+                        var state: *ThisAsyncState = @ptrCast(@alignCast(data));
+
+                        const res = @call(.auto, fun, state.*.params);
+
+                        std.log.info("RETURN {any}", .{res});
+                        state.return_value = res;
+                    }
+
+                    pub fn resolve(e: c.napi_env, _: c_uint, data: ?*anyopaque) callconv(.c) void {
+                        const state: *ThisAsyncState = @ptrCast(@alignCast(data));
+                        const n = NodeContext{ .napi_env = e };
+                        std.log.info("DATA {any}", .{state});
                         std.log.info("completion thread {any}", .{std.Thread.getCurrentId()});
 
-                        std.Thread.sleep(1000 * 1000 * 1000 * 5);
-                        var dbl: c.napi_value = undefined;
-                        _ = c.napi_create_double(c_env, 12.23, &dbl);
-                        const res = s2e(c.napi_resolve_deferred(c_env, state.deferred, dbl)) catch |err| {
-                            state.err = err;
-                            return;
-                        };
-                        std.log.info("res {any}", .{res});
+                        if (state.return_value) |v| {
+                            const resolution: c.napi_value = (n.serialize(v) catch unreachable).napi_value;
+                            // _ = c.napi_create_double(c_env, 12.23, &resolution);
+                            const res = s2e(c.napi_resolve_deferred(e, state.deferred, resolution)) catch unreachable;
+                            std.log.info("res {any}", .{res});
+                        } else |err| {
+                            std.log.debug("error {any}", .{err});
+                            s2e(c.napi_reject_deferred(e, state.deferred, (n.serialize((err) catch unreachable)).napi_value)) catch unreachable;
+                        }
                     }
                 };
 
                 var deferred: c.napi_deferred = undefined;
                 var promise: c.napi_value = undefined;
                 s2e(c.napi_create_promise(env, &deferred, &promise)) catch |err| {
-                    n.handleError(err);
+                    node.handleError(err);
                     return null;
                 };
-
-                const s = std.heap.page_allocator.create(AsyncState) catch {
-                    @panic("bam");
-                };
                 s.*.deferred = deferred;
-                s.*.this = this;
-                s.*.args = &args;
-                s.*.return_value = null;
 
                 var task: c.napi_async_work = undefined;
                 s2e(c.napi_create_async_work(
@@ -561,21 +519,17 @@ pub const NodeContext = struct {
                     s,
                     &task,
                 )) catch |err| {
-                    n.handleError(err);
+                    node.handleError(err);
                     return null;
                 };
                 s2e(c.napi_queue_async_work(env, task)) catch |err| {
-                    n.handleError(err);
+                    node.handleError(err);
                     return null;
                 };
 
                 return promise;
             }
         }.f;
-
-        var function: c.napi_value = undefined;
-        try s2e(c.napi_create_function(self.napi_env, null, 4, f, null, &function));
-        return NodeValue{ .napi_env = self.napi_env, .napi_value = function };
     }
 
     pub fn serialize(self: Self, value: anytype) !NodeValue {
@@ -597,6 +551,10 @@ pub const NodeContext = struct {
         lib.handleError(self.napi_env, err);
     }
 
+    pub fn throw(self: Self, err: anyerror) void {
+        _ = c.napi_throw_error(self.napi_env, @errorName(err), @errorName(err));
+    }
+
     fn get(self: Self, f: anytype) !NodeValue {
         var res: c.napi_value = undefined;
         try s2e(f(self.napi_env, &res));
@@ -604,21 +562,14 @@ pub const NodeContext = struct {
     }
 };
 
-fn wrapNapiValues(env: c.napi_env, comptime count: usize, args: [count]c.napi_value) [count]NodeValue {
-    var result: [count]NodeValue = undefined;
-    for (args, 0..) |arg, i| {
-        result[i] = NodeValue{ .napi_env = env, .napi_value = arg };
-    }
-    return result;
+fn AsyncState(comptime params: []const std.builtin.Type.Fn.Param, comptime RET: anytype) type {
+    return struct {
+        deferred: c.napi_deferred,
+        this: ?*anyopaque,
+        params: TupleTypeOf(params),
+        return_value: RET,
+    };
 }
-
-const AsyncState = struct {
-    deferred: c.napi_deferred,
-    this: ?NodeValue,
-    args: []c.napi_value,
-    return_value: c.napi_value = null,
-    err: ?anyerror = null,
-};
 
 fn TupleTypeOf(comptime params: []const std.builtin.Type.Fn.Param) type {
     comptime var argTypes: [params.len]type = undefined;
@@ -627,4 +578,10 @@ fn TupleTypeOf(comptime params: []const std.builtin.Type.Fn.Param) type {
     }
 
     return std.meta.Tuple(&argTypes);
+}
+
+inline fn endsWith(comptime haystack: []const u8, comptime needle: []const u8) bool {
+    if (needle.len > haystack.len) return false;
+    const start = haystack.len - needle.len;
+    return std.mem.eql(u8, haystack[start..], needle);
 }
