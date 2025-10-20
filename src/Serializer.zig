@@ -5,7 +5,7 @@ const s2e = lib.statusToError;
 const NodeValue = @import("node_values.zig").NodeValue;
 const NodeObject = @import("node_values.zig").NodeObject;
 
-/// Converts a Zig value to a Node-API value.
+/// Converts a Zig value to a Node-API value. Memory for the node value is allocated by V8.
 pub fn serialize(env: c.napi_env, value: anytype) !c.napi_value {
     const T = @TypeOf(value);
 
@@ -77,6 +77,8 @@ pub fn serialize(env: c.napi_env, value: anytype) !c.napi_value {
         .pointer => |p| {
             switch (p.size) {
                 .one => {
+                    // TODO: could be wrapped value, do we need this?
+
                     return serialize(env, value.*);
                 },
                 .slice => {

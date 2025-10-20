@@ -24,7 +24,7 @@ fn init(node: node_api.NodeContext) !?node_api.NodeValue {
             .asyncFunction = try node.defineAsyncFunction(sleep),
         },
         .serializedValues = .{
-            .arr = .{ getInt(), 12, .{ getInt(), 12 }, .{ .foo = 123 } },
+            .arr = .{ getInt(), 12, .{ getInt(), 12 }, .{ .foo = 123 }, "bar" },
             .my_union = MyUnion{ .foo = 123 },
             .s = try node.deserialize([]u8, try node.serialize("There and Back Again.")),
             .comptime_int = try node.deserialize(i32, try node.serialize(1234)),
