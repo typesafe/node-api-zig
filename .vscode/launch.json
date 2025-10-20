@@ -13,12 +13,12 @@
       "args": ["test"]
     },
     {
-      "name": "test defineAsyncFunction",
+      "name": "test defineFunction",
       "type": "lldb",
       "request": "launch",
       "cwd": "./tests",
       "program": "/run/current-system/sw/bin/bun",
-      "args": ["test", "--test-name-pattern", "defineAsyncFunction"]
+      "args": ["test", "--test-name-pattern", "defineFunction"]
     },
     {
       "name": "test defineClass",

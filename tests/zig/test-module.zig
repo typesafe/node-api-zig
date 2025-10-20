@@ -21,6 +21,8 @@ fn init(node: node_api.NodeContext) !?node_api.NodeValue {
         .functions = .{
             .fnWithSerializedParams = try node.defineFunction(fnWithSerializedParams),
             .fnWithAllocatorParam = try node.defineFunction(fnWithAllocatorParam),
+            .fnCallback = try node.defineFunction(fnCallback),
+            .fnCallbackAsync = try node.defineAsyncFunction(fnCallbackAsync),
             .asyncFunction = try node.defineAsyncFunction(sleep),
         },
         .serializedValues = .{
@@ -91,4 +93,30 @@ fn fnWithAllocatorParam(allocator: std.mem.Allocator, len: usize) ![]u8 {
 
     @memset(ret, @as(u8, 'A'));
     return ret;
+}
+
+// node_api.NodeFunction(*const fn (i32) i32)
+
+/// can be called from JS like this:
+/// addon.fnCallback((value: number) => 123 + value);
+fn fnCallback(callback: node_api.NodeFunction(fn (i32) i32)) ![]const u8 {
+    std.log.info("invoking JS callback with value 123", .{});
+    // args tuple is typesafe
+    const res = try callback.call(.{123});
+
+    std.log.info("JS callback returned: {any}", .{res});
+
+    return "ok";
+}
+
+fn fnCallbackAsync(callback: node_api.NodeFunction(fn (i32) i32)) ![]const u8 {
+    std.log.info("callback {any}", .{callback});
+
+    // TODO: NodeFunction should be threadsafe (automagically)
+    // args tuple is typesafe
+    // const res = callback.call(.{123});
+
+    // std.log.info("JS callback returned: {any}", .{res});
+
+    return "ok";
 }

@@ -1,20 +1,18 @@
-The `node-api` Zig package provides [Node-API](https://nodejs.org/api/n-api.html) bindings for writing idiomatic Zig add-ons for V8 runtimes like Node.JS or Bun.
-
-The module relies heavily on conventions to simplify memory & lifetime management, async processing, type conversions, etc.
+The `node-api` Zig package provides [Node-API](https://nodejs.org/api/n-api.html) bindings for writing idiomatic Zig addons for V8-based runtimes like Node.JS or Bun.
 
 # Features
 
-
-- define classes by convention, incl. support for init, deinit, instance methods, satic methods, fields & allocator injection.
-- wrapping object instances, similar to defining classes but for instances created in Zig
-- convention-based mapping of function (and method) declarations, including async support (Promises)
-- memory management support Zig idoms for allocation of memory
-- serialization of JS values
-  - by value
+- convention-based function mapping, including async support (auto-conversion to Promises)
+- wrapping object instances, similar to defining classes but for instances created in native Zig code
+- convention-based class mapping, incl. support for fields, instance methods, satic methods
+- memory management with convention-based init, deinit support & allocator injection
+- errorunion support
+- mapping JS values
+  - by value: through (de)serialization or various types
   - by reference
-    - Zig-managed values (wrapped)
-    - or JS-managed values (`NodeValue` et.al.)
-- Idiomatic error handling
+    - Zig-managed values: through pointers to (wrapped) native Zig values
+    - JS-managed values: through wrappers types (`NodeValue` et.al.) for read/write
+  - typesafe callbacks: `NodeFunction(fn (u32, u32) !u32)`
 
 # Getting started
 

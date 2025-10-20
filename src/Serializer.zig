@@ -4,15 +4,11 @@ const c = lib.c;
 const s2e = lib.statusToError;
 const NodeValue = @import("node_values.zig").NodeValue;
 const NodeObject = @import("node_values.zig").NodeObject;
+const NodeFunction = @import("node_values.zig").NodeFunction;
 
 /// Converts a Zig value to a Node-API value. Memory for the node value is allocated by V8.
 pub fn serialize(env: c.napi_env, value: anytype) !c.napi_value {
     const T = @TypeOf(value);
-
-    // TODO: complete
-    if (T == NodeValue or T == NodeObject) {
-        return value.napi_value;
-    }
 
     const info = @typeInfo(T);
 
@@ -99,6 +95,11 @@ pub fn serialize(env: c.napi_env, value: anytype) !c.napi_value {
             }
         },
         .@"struct" => |s| {
+            // TODO: complete
+            if (T == NodeValue or T == NodeObject) {
+                return value.napi_value;
+            }
+
             if (!s.is_tuple) {
                 try s2e(c.napi_create_object(env, &res));
                 inline for (s.fields) |field| {
@@ -246,7 +247,11 @@ pub fn deserialize(env: c.napi_env, comptime T: type, value: c.napi_value, alloc
             if (T == NodeValue) {
                 return NodeValue{ .napi_env = env, .napi_value = value };
             }
+            if (@hasDecl(T, "__is_node_function")) {
+                return T{ .napi_env = env, .napi_value = value };
+            }
         },
+
         else => @compileError(std.fmt.comptimePrint("Cannot deserialize value of type {s}", .{@typeName(T)})),
     }
 
@@ -272,3 +277,41 @@ pub fn deserialize(env: c.napi_env, comptime T: type, value: c.napi_value, alloc
     //     else => @compileError(std.fmt.comptimePrint("Cannot deserialize value of type {s}", .{@typeName(T)})),
     // };
 }
+
+// fn wrapCallback(comptime T: anytype, callback: NodeFunction) T {
+//     const fn_type = (@typeInfo(T).pointer.child);
+//     const info = @typeInfo(fn_type).@"fn";
+//     const params = info.params;
+
+//     // const fns = wrapCallback(T, callback);
+//     return switch (params.len) {
+//         0 => opaque {
+//             inline fn cb0() info.return_type.? {
+//                 return callback.call(.{});
+//             }
+//             inline fn cb1(arg1: info.params[0].type.?) info.return_type.? {
+//                 return callback.call(.{arg1});
+//             }
+//         }.cb0,
+//         1 => opaque {
+//             inline fn cb0() info.return_type.? {
+//                 return callback.call(.{});
+//             }
+//             inline fn cb1(arg1: info.params[0].type.?) info.return_type.? {
+//                 return callback.call(.{arg1});
+//             }
+//         }.cb1,
+//         else => @compileError("too many arguments"),
+//     };
+// }
+
+// fn CallbackWrapper(comptime info: std.builtin.Type.Fn, cb: NodeValue) type {
+//     return opaque {
+//         pub fn cb0() info.return_type.? {
+//             return cb.call(.{});
+//         }
+//         pub fn cb1(arg1: info.params[0].type.?) info.return_type.? {
+//             return cb.call(.{arg1});
+//         }
+//     };
+// }

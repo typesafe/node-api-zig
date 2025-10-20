@@ -44,7 +44,7 @@ pub const NodeValue = struct {
 
     pub fn typeof(self: NodeValue.Self) !NodeValueType {
         var result: c.napi_valuetype = undefined;
-        try s2e(c.napi_typeof(self.napi_env, self.napi_env, &result));
+        try s2e(c.napi_typeof(self.napi_env, self.napi_value, &result));
 
         return switch (result) {
             c.napi_undefined => NodeValueType.Undefined,
@@ -87,6 +87,17 @@ pub const NodeValue = struct {
         }
 
         return error.NodeValueIsNoObject;
+    }
+
+    pub fn asFunction(self: NodeValue.Self) !NodeFunction {
+        if (try self.typeof() == .Function) {
+            return NodeFunction{
+                .napi_env = self.napi_env,
+                .napi_value = self.napi_value,
+            };
+        }
+
+        return error.NodeValueIsNoFunction;
     }
 
     // TODO: more as... methods
@@ -149,6 +160,41 @@ pub const NodeObject = struct {
     // get prop
 };
 
+/// Represents a JS function.
+pub fn NodeFunction(comptime F: anytype) type {
+    const f = switch (@typeInfo(F)) {
+        .@"fn" => |info| info,
+        else => @compileError("F must be function"),
+    };
+
+    return struct {
+        const Self = @This();
+        pub const __is_node_function = true;
+
+        napi_env: c.napi_env,
+        napi_value: c.napi_value,
+
+        pub fn call(self: Self, args: TupleTypeOf(f.params)) !f.return_type.? {
+            var js_args: [f.params.len]c.napi_value = undefined;
+            inline for (0..args.len) |i| {
+                js_args[i] = try Serializer.serialize(self.napi_env, args[i]);
+            }
+            var res: c.napi_value = undefined;
+
+            try s2e(c.napi_call_function(self.napi_env, null, self.napi_value, js_args.len, &js_args, &res));
+
+            return try Serializer.deserialize(self.napi_env, f.return_type.?, res, std.heap.c_allocator);
+        }
+    };
+}
+fn TupleTypeOf(params: []const std.builtin.Type.Fn.Param) type {
+    comptime var argTypes: [params.len]type = undefined;
+    inline for (0..params.len) |i| {
+        argTypes[i] = params[i].type.?;
+    }
+
+    return std.meta.Tuple(&argTypes);
+}
 pub const NodeArray = struct {
     const Self = @This();
 

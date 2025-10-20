@@ -3,12 +3,12 @@ const std = @import("std");
 const c = @import("c.zig").c;
 const Serializer = @import("Serializer.zig");
 const NodeValues = @import("node_values.zig");
-
 /// Represents a Node VM Context.
 pub const NodeContext = @import("Node.zig").NodeContext;
 
 /// Represents a Node value.
 pub const NodeValue = NodeValues.NodeValue;
+pub const NodeFunction = NodeValues.NodeFunction;
 
 /// The InitFunction to pass to the `register` method. The `ctx` parameter
 /// represents the Node context. The returned value becomes the `exports` value

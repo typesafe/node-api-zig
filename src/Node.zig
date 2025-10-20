@@ -529,7 +529,7 @@ const SelfParamType = enum { none, value, pointer };
 inline fn isSelfParam(comptime T: anytype, comptime param: std.builtin.Type.Fn.Param) SelfParamType {
     switch (@typeInfo(param.type.?)) {
         .pointer => |p| {
-            if (p.child == T) return .pointer;
+            if (T != null and p.child == T) return .pointer;
         },
         .@"struct" => {
             if (param.type == T) return .value;

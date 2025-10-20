@@ -14,6 +14,17 @@ describe("defineFunction", () => {
     });
   });
 
+  describe("with callback parameter", () => {
+    it("should call callback", () => {
+      expect(
+        addon.functions.fnCallback((foo) => {
+          console.log("CALLED FROM ZIG", foo);
+          return foo * 3;
+        })
+      ).toEqual("ok");
+    });
+  });
+
   describe("calling with too few arguments", () => {
     it("should serialize params and return values", () => {
       expect(addon.functions.fnWithAllocatorParam(42)).toEqual(
