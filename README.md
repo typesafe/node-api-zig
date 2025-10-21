@@ -51,6 +51,15 @@ Native values and NodeValue instance can be converted using the NodeSerializer.
 
 ## Define functions
 
+Arguments can be of type:
+
+- NodeContext => will result in the injection of the current NodeContext
+- allocator => will inject the (arean) allocator for the current invocation, memory is freed after returning
+- native Zig type => will be deserialized
+- pointer => will return the native instance of a wrapped object
+- optional
+- enum
+- NodeXxx values for references
 ## Define async functions
 
 

@@ -4,6 +4,7 @@ const node_api = @import("node-api");
 const TestClass = @import("TestClass.zig");
 const Stats = @import("Stats.zig");
 const WrapTarget = @import("WrapTarget.zig");
+const Serialization = @import("Serialization.zig");
 comptime {
     node_api.register(init);
 }
@@ -16,6 +17,7 @@ fn init(node: node_api.NodeContext) !?node_api.NodeValue {
     // const ;
 
     const v = try node.serialize(.{
+        .serialization = try node.defineClass(Serialization),
         .TestClass = try node.defineClass(TestClass),
         .wrappedInstance = try node.wrapInstance(WrapTarget, .{ .foo = 123, .bar = "hopla" }),
         .functions = .{
@@ -88,7 +90,7 @@ fn sleep(milliseconds: u32) !i32 {
     return 456;
 }
 
-fn fnWithAllocatorParam(allocator: std.mem.Allocator, len: usize) ![]u8 {
+fn fnWithAllocatorParam(allocator: std.mem.Allocator, len: u32) ![]u8 {
     const ret = try allocator.alloc(u8, len);
 
     @memset(ret, @as(u8, 'A'));

@@ -6,10 +6,17 @@ describe("defineFunction with callback", () => {
     expect(
       addon.functions.fnCallback((foo) => {
         console.log("CALLED FROM ZIG", foo);
-        throw new Error('Kablooie')
-        // return foo * 3;
+        return foo * 3;
       })
     ).toEqual("ok");
+  });
+
+  it("should propagate errors thrown in callback", () => {
+    expect(() => {
+      addon.functions.fnCallback(() => {
+        throw new Error("Kablooie");
+      });
+    }).toThrowError("Kablooie");
   });
 });
 

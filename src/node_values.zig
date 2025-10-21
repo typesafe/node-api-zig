@@ -183,7 +183,10 @@ pub fn NodeFunction(comptime F: anytype) type {
 
             try s2e(c.napi_call_function(self.napi_env, null, self.napi_value, js_args.len, &js_args, &res));
 
-            return try Serializer.deserialize(self.napi_env, f.return_type.?, res, std.heap.c_allocator);
+            var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
+            defer arena.deinit();
+
+            return try Serializer.deserialize(self.napi_env, f.return_type.?, res, arena.allocator());
         }
     };
 }

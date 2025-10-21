@@ -96,6 +96,10 @@ pub const NodeContext = struct {
                     return null;
                 }
                 const self: *T = @ptrCast(@alignCast(raw.?));
+
+                // TODO: use self.allocator if any
+                //@hasField(T, "allocator");
+
                 @field(self, field) = node.deserialize(fieldType, NodeValue{
                     .napi_env = env,
                     .napi_value = argv[0],
@@ -181,6 +185,10 @@ pub const NodeContext = struct {
                     node.handleError(err);
                     return null;
                 };
+
+                // TODO:
+                var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
+                defer arena.deinit();
 
                 // const this = if (this_arg == null) null else NodeValue{ .napi_env = env, .napi_value = this_arg };
                 var fields: TupleTypeOf(params) = undefined;
@@ -385,6 +393,11 @@ pub const NodeContext = struct {
 
                 const offset = if (is_static) 0 else 1;
                 var arg: u8 = 0;
+
+                // TODO: use this arena
+                var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
+                defer arena.deinit();
+
                 inline for (params[offset..], offset..) |p, i| {
                     {
                         std.log.info("deserializing", .{});
@@ -564,6 +577,10 @@ inline fn callFunction(
         .@"fn" => |t| t.params,
         else => @compileError("`fun` must be a function."),
     };
+
+    // TODO:
+    var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
+    defer arena.deinit();
 
     var fields: TupleTypeOf(params) = undefined;
     const selfParam = getSelfParam(T, params);
