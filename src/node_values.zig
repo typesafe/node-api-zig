@@ -183,7 +183,10 @@ pub fn NodeFunction(comptime F: anytype) type {
             }
             var res: c.napi_value = undefined;
 
-            try s2e(c.napi_call_function(self.napi_env, null, self.napi_value, js_args.len, &js_args, &res));
+            var global: c.napi_value = undefined;
+            _ = c.napi_get_global(self.napi_env, &global);
+
+            try s2e(c.napi_call_function(self.napi_env, global, self.napi_value, js_args.len, &js_args, &res));
 
             var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
             defer arena.deinit();
