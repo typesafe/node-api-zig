@@ -30,6 +30,7 @@ pub fn build(b: *std.Build) void {
 
     // important
     sample_addon.linker_allow_shlib_undefined = true;
+    sample_addon.linkLibC();
 
     const install_step = b.getInstallStep();
 
