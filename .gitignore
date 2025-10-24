@@ -3,4 +3,4 @@ tmp
 zig-out/
 *.o
 
-tests/node_modules/sample/sample-addon.node
+tests/node_modules/node-api-test-module/zig-module.node
