@@ -98,14 +98,14 @@ fn fnWithJsNewedNativeInstance(newed_in_js: *TestClass) !*TestClass {
 
 /// can be called from JS like this:
 /// addon.fnCallback((value: number) => 123 + value);
-fn fnCallback(callback: node_api.NodeFunction(fn (i32) i32)) ![]const u8 {
+fn fnCallback(arg: i32, callback: node_api.NodeFunction(fn (i32) i32)) !i32 {
     std.log.info("invoking JS callback with value 123", .{});
     // args tuple is typesafe
-    const res = try callback.call(.{123});
+    const res = try callback.call(.{arg});
 
     std.log.info("JS callback returned: {any}", .{res});
 
-    return "ok";
+    return res;
 }
 
 fn fnCallbackAsync(callback: node_api.NodeFunction(fn (i32) i32)) ![]const u8 {

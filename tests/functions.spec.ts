@@ -34,13 +34,15 @@ describe("defineFunction", () => {
   });
 
   describe("with callback parameter", () => {
+    const capturedValue = 3;
     it("should call callback", () => {
       expect(
-        addon.functions.fnCallback((foo) => {
+        addon.functions.fnCallback(123, (foo) => {
+          console.log(this);
           console.log("CALLED FROM ZIG", foo);
-          return foo * 3;
+          return foo * capturedValue;
         })
-      ).toEqual("ok");
+      ).toEqual(369);
     });
   });
 
