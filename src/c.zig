@@ -132,11 +132,15 @@ pub const NodeApiError = error{
 
 // https://nodejs.org/api/n-api.html#error-handling
 pub fn handleError(env: c.napi_env, err: anyerror) void {
+    std.log.debug("handling error for {any}", .{err});
+
     var err_info: [*c]const c.napi_extended_error_info = undefined;
     if (c.napi_get_last_error_info(env, &err_info) != c.napi_ok) {
         @panic("failed to call `napi_get_last_error_info`.");
     }
-    std.log.debug("err_infooo {s}", .{err_info.*.error_message});
+    // if (err_info != null) {
+    //     std.log.debug("err_infooo {s}", .{err_info.*.error_message});
+    // }
 
     // In many cases when a Node-API function is called and an exception is already pending, the function will return immediately with a napi_status of napi_pending_exception.
     // However, this is not the case for all functions. Node-API allows a subset of the functions to be called to allow for some minimal cleanup before returning to JavaScript.
@@ -157,13 +161,15 @@ pub fn handleError(env: c.napi_env, err: anyerror) void {
         return;
     }
 
+    _ = c.napi_throw_error(env, @errorName(err), @errorName(err));
+
     // TODO: https://nodejs.org/api/n-api.html#error-handling
 
-    if (err_info) |info| {
-        if (info.*.error_message) |m| {
-            _ = c.napi_throw_error(env, @errorName(err), std.mem.span(m));
-        }
-    } else {
-        _ = c.napi_throw_error(env, @errorName(err), @errorName(err));
-    }
+    // if (err_info) |info| {
+    //     if (info.*.error_message) |m| {
+    //         _ = c.napi_throw_error(env, @errorName(err), std.mem.span(m));
+    //     }
+    // } else {
+    //     _ = c.napi_throw_error(env, @errorName(err), @errorName(err));
+    // }
 }

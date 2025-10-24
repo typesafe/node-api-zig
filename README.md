@@ -1,12 +1,24 @@
 The `node-api` Zig package provides [Node-API](https://nodejs.org/api/n-api.html) bindings for writing idiomatic Zig addons for V8-based runtimes like Node.JS or Bun.
 
+TODO:
+
+- [ ] Add GH pipeline (incl. test report)
+- [ ] Make `NodeFunction` thread safe by convention when it is used in an async function/method.
+- [ ] Add `NodeObject` for "by reference" access to JS objects from Zig
+- [ ] Add `NodeArray` for "by reference" access to JS objects from Zig
+- [ ] Add support for externals
+  - [ ] `External`
+  - [ ] `ExternalBuffer`
+  - [ ] `ExternalArrayBuffer`
+- [ ] Use `Result(T, E)` as alternative to `errorunion`s for improved error messages.
+
 # Features
 
-- convention-based function mapping, including async support (auto-conversion to Promises)
-- wrapping object instances, similar to defining classes but for instances created in native Zig code
-- convention-based class mapping, incl. support for fields, instance methods, satic methods
-- memory management with convention-based init, deinit support & allocator injection
-- errorunion support
+- **function mapping**, including async support (auto-conversion to Promises)
+- **class mapping**, incl. support for fields, instance methods, satic methods
+- **auto-wrapping** of native objects instances, similar to defining classes but for instances created in native Zig code
+- **memory management** with convention-based `init`, `deinit` support & `allocator` injection
+- `errorunion` support
 - mapping JS values
   - by value: through (de)serialization or various types
   - by reference
@@ -15,6 +27,7 @@ The `node-api` Zig package provides [Node-API](https://nodejs.org/api/n-api.html
   - typesafe callbacks: `NodeFunction(fn (u32, u32) !u32)`
 
 # Getting started
+
 
 TODO
 
@@ -117,6 +130,9 @@ const MyClass = struct {
 ## Wrap objects
 
 ## Memory management
+
+
+
 - class instances are allocated and freed automatically
   - new-ing instance (from JS) will allocate memory (and update V8 stats)
   - GC finalizers will automatically free the memory (and update V8 stats)
@@ -126,3 +142,26 @@ const MyClass = struct {
 
 
 
+
+/*
+
+Scenarios:
+
+native (wrapped) instance lifecycle:
+- new in JS -> finalize in Zig
+- create in Zig -> finalize in Zig
+
+external instance memory:
+- arena per instance?
+- managed by instance if instance has allocator field
+
+parameters and return values:
+- pointers to structs result in uwrapped values
+- parameters and return type memory
+  - arena per function call
+
+setting field values
+- frees previous value, if any
+
+
+ */

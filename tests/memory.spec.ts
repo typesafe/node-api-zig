@@ -12,8 +12,8 @@ describe("struct.deinit", () => {
 
     gc(true);
 
-    // give finalizers a chance to kick in
-    await sleep(10);
+    // give finalizers a chance to kick in (works for Bun, not sure about other runtimes)
+    await sleep(0);
 
     expect(addon.TestClass.getInstanceCount()).toEqual(count - 1n);
   });

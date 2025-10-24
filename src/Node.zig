@@ -10,6 +10,8 @@ const Serializer = @import("Serializer.zig");
 const NodeValues = @import("node_values.zig");
 const NodeValue = NodeValues.NodeValue;
 
+const registry = @import("references.zig").Registry;
+
 /// Represents a context that the underlying Node-API implementation can use to persist VM-specific state.
 pub const NodeContext = struct {
     const Self = @This();
@@ -162,11 +164,11 @@ pub const NodeContext = struct {
     }
 
     fn getLifetimeHandler(comptime T: anytype) type {
-        const init_fn = @field(T, "init");
-        const deinit_fn = @field(T, "deinit");
         return struct {
             pub fn init(env: c.napi_env, cb: c.napi_callback_info) callconv(.c) c.napi_value {
                 std.log.info("init {any} {any} {any}", .{ env, cb, T });
+
+                const init_fn = @field(T, "init");
 
                 var new_target: c.napi_value = null;
                 if (c.napi_get_new_target(env, cb, &new_target) != c.napi_ok or new_target == null) {
@@ -232,21 +234,28 @@ pub const NodeContext = struct {
                     return null;
                 }
 
+                registry.track(self, this_arg) catch unreachable;
+
                 return this_arg;
             }
 
             pub fn finalize(e: c.napi_env, data: ?*anyopaque, _: ?*anyopaque) callconv(.c) void {
                 std.log.info("Zig Finalizer!", .{});
 
-                _ = callFunction(T, deinit_fn, NodeContext.init(e), .{ .zig = data }, &.{}) catch |err| {
-                    _ = err;
-                    // TODO;
-                    unreachable;
-                };
-                const self: *T = @ptrCast(@alignCast(data.?));
-
-                std.log.info(" Finalizer data {any} {any}", .{ data, self });
-                freee(T, self);
+                // TODO: if deinit -> struct is responinsible for free?
+                if (@hasDecl(T, "deinit")) {
+                    const deinit_fn = @field(T, "deinit");
+                    _ = callFunction(T, deinit_fn, NodeContext.init(e), .{ .zig = data }, &.{}) catch |err| {
+                        _ = err;
+                        // TODO How do we deal with this? Finalizers are invoked in the background.
+                        unreachable;
+                    };
+                } else {
+                    const self: *T = @ptrCast(@alignCast(data.?));
+                    std.log.info(" Finalizer data {any} {any}", .{ data, self });
+                    freee(T, self);
+                    registry.wrapped_instances.remove(@intFromPtr(self));
+                }
             }
 
             /// instance is TT or *TT (due to this being called recursively)
@@ -330,6 +339,7 @@ pub const NodeContext = struct {
             null,
             null,
         ));
+        try registry.track(i, js_obj);
         return NodeValue{ .napi_env = self.napi_env, .napi_value = js_obj };
     }
 
@@ -342,7 +352,7 @@ pub const NodeContext = struct {
     ///
     pub fn defineFunction(self: Self, comptime fun: anytype) !NodeValue {
         var function: c.napi_value = undefined;
-        try s2e(c.napi_create_function(self.napi_env, null, 0, wrapFn(null, fun), null, &function));
+        try s2e(c.napi_create_function(self.napi_env, null, 0, wrapFn(struct {}, fun), null, &function));
         return NodeValue{ .napi_env = self.napi_env, .napi_value = function };
     }
 
@@ -400,7 +410,6 @@ pub const NodeContext = struct {
 
                 inline for (params[offset..], offset..) |p, i| {
                     {
-                        std.log.info("deserializing", .{});
                         if (params[i].type.? == NodeContext) {
                             s.*.params[i] = node;
                         } else if (params[i].type.? == std.mem.Allocator) {
@@ -421,6 +430,11 @@ pub const NodeContext = struct {
                                 node.handleError(err);
                                 return null;
                             };
+
+                            // if (@hasDecl(p.type.?, "__is_node_function")) {
+                            //     // TODO: make this async
+                            // }
+
                             arg += 1;
                         }
                     }
@@ -542,7 +556,7 @@ const SelfParamType = enum { none, value, pointer };
 inline fn isSelfParam(comptime T: anytype, comptime param: std.builtin.Type.Fn.Param) SelfParamType {
     switch (@typeInfo(param.type.?)) {
         .pointer => |p| {
-            if (T != null and p.child == T) return .pointer;
+            if (p.child == T) return .pointer;
         },
         .@"struct" => {
             if (param.type == T) return .value;
@@ -614,15 +628,13 @@ inline fn callFunction(
     var arg: u8 = 0;
     inline for (params[offset..], offset..) |p, i| {
         {
-            std.log.info("deserializing", .{});
             if (params[i].type.? == NodeContext) {
                 fields[i] = node;
             } else if (params[i].type.? == std.mem.Allocator) {
                 fields[i] = std.heap.c_allocator;
             } else {
                 if (arg >= js_args.len) {
-                    node.throw(error.MissingArguments);
-                    unreachable;
+                    return error.MissingArguments;
                 }
                 fields[i] = node.deserialize(
                     p.type.?,
@@ -631,8 +643,7 @@ inline fn callFunction(
                         .napi_value = js_args[arg],
                     },
                 ) catch |err| {
-                    node.handleError(err);
-                    unreachable;
+                    return err;
                 };
                 arg += 1;
             }

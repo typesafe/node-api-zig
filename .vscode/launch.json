@@ -18,7 +18,7 @@
       "request": "launch",
       "cwd": "./tests",
       "program": "/run/current-system/sw/bin/bun",
-      "args": ["test", "--test-name-pattern", "defineFunction"]
+      "args": ["test", "--test-name-pattern", "(^ ?Serializer deserialize struct$)"]
     },
     {
       "name": "test defineClass",

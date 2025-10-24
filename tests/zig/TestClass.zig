@@ -1,6 +1,6 @@
 const std = @import("std");
 const node_api = @import("node-api");
-const Stats = @import("Stats.zig");
+
 const WrapTarget = @import("WrapTarget.zig");
 
 // allocated (JS `new TestClass()`) and freed/destroyed (GC finalizer) automatically

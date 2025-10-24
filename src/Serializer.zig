@@ -8,7 +8,7 @@ const NodeValue = node_values.NodeValue;
 const NodeObject = node_values.NodeObject;
 const NodeArray = node_values.NodeArray;
 const NodeFunction = node_values.NodeFunction;
-
+const registry = @import("references.zig").Registry;
 /// Converts a Zig value to a Node-API value. Memory for the node value is allocated by V8.
 pub fn serialize(env: c.napi_env, value: anytype) !c.napi_value {
     const T = @TypeOf(value);
@@ -74,6 +74,10 @@ pub fn serialize(env: c.napi_env, value: anytype) !c.napi_value {
         .pointer => |p| {
             switch (p.size) {
                 .one => {
+                    if (registry.get(@ptrCast(@constCast(value)))) |v| {
+                        return v;
+                    }
+
                     // TODO: could be wrapped value, do we need this?
                     // how do we know if the instance was already wrapped before?
                     // hashset?
@@ -137,18 +141,6 @@ pub fn serialize(env: c.napi_env, value: anytype) !c.napi_value {
                 }
             }
         },
-        .vector => |p| {
-            if (p.child == u8) {
-                try s2e(c.napi_create_string_utf8(env, &value, value.len, &res));
-            } else {
-                try s2e(c.napi_create_array_with_length(env, value.len, &res));
-
-                for (value, 0..) |item, i| {
-                    const el = try serialize(env, item);
-                    try s2e(c.napi_set_element(env, res, i, el));
-                }
-            }
-        },
         .@"union" => |u| {
             if (u.tag_type) |Tag| {
                 try s2e(c.napi_create_object(env, &res));
@@ -184,8 +176,17 @@ pub fn deserialize(env: c.napi_env, comptime T: type, js_value: c.napi_value, al
         .int => |i| {
             if (i.signedness == .signed) {
                 switch (i.bits) {
-                    0...32 => try s2e(c.napi_get_value_int32(env, js_value, &res)),
-                    33...64 => try s2e(c.napi_get_value_int64(env, js_value, &res)),
+                    32 => {
+                        var tmp: i32 = undefined;
+                        try s2e(c.napi_get_value_int32(env, js_value, &tmp));
+                        // TODO: handle failing int casts
+                        return @intCast(tmp);
+                    },
+                    64 => {
+                        var tmp: i64 = undefined;
+                        try s2e(c.napi_get_value_int64(env, js_value, &tmp));
+                        return @intCast(tmp);
+                    },
                     else => @compileError(std.fmt.comptimePrint("Cannot deserialize value of type {s}", .{@typeName(T)})),
                 }
             } else {
@@ -271,7 +272,7 @@ pub fn deserialize(env: c.napi_env, comptime T: type, js_value: c.napi_value, al
                 },
             }
         },
-        .@"struct" => {
+        .@"struct" => |s| {
             if (T == NodeValue) {
                 return T{ .napi_env = env, .napi_value = js_value };
             }
@@ -279,69 +280,18 @@ pub fn deserialize(env: c.napi_env, comptime T: type, js_value: c.napi_value, al
                 return T{ .napi_env = env, .napi_value = js_value };
             }
 
-            // TODO
+            var instance: T = undefined;
+            inline for (s.fields) |field| {
+                var v: c.napi_value = undefined;
+                try s2e(c.napi_get_named_property(env, js_value, field.name.ptr, &v));
+                @field(instance, field.name) = try deserialize(env, field.type, v, allocator);
+            }
+
+            return instance;
         },
 
         else => @compileError(std.fmt.comptimePrint("Cannot deserialize value of type {s}", .{@typeName(T)})),
     }
 
     return res;
-
-    // return switch (info) {
-    //     .bool => {
-    //         var b: bool = undefined;
-    //         try s2e(c.napi_get_value_bool(env, value, &b));
-    //         return b;
-    //     },
-    //     .i32 => {
-    //         var v: i32 = undefined;
-    //         try s2e(c.napi_get_value_int32(env, value, &v));
-    //         return v;
-    //     },
-    //     .i64 => {
-    //         var v: i64 = undefined;
-    //         try s2e(c.napi_get_value_int64(env, value, &v));
-    //         return v;
-    //     },
-
-    //     else => @compileError(std.fmt.comptimePrint("Cannot deserialize value of type {s}", .{@typeName(T)})),
-    // };
 }
-
-// fn wrapCallback(comptime T: anytype, callback: NodeFunction) T {
-//     const fn_type = (@typeInfo(T).pointer.child);
-//     const info = @typeInfo(fn_type).@"fn";
-//     const params = info.params;
-
-//     // const fns = wrapCallback(T, callback);
-//     return switch (params.len) {
-//         0 => opaque {
-//             inline fn cb0() info.return_type.? {
-//                 return callback.call(.{});
-//             }
-//             inline fn cb1(arg1: info.params[0].type.?) info.return_type.? {
-//                 return callback.call(.{arg1});
-//             }
-//         }.cb0,
-//         1 => opaque {
-//             inline fn cb0() info.return_type.? {
-//                 return callback.call(.{});
-//             }
-//             inline fn cb1(arg1: info.params[0].type.?) info.return_type.? {
-//                 return callback.call(.{arg1});
-//             }
-//         }.cb1,
-//         else => @compileError("too many arguments"),
-//     };
-// }
-
-// fn CallbackWrapper(comptime info: std.builtin.Type.Fn, cb: NodeValue) type {
-//     return opaque {
-//         pub fn cb0() info.return_type.? {
-//             return cb.call(.{});
-//         }
-//         pub fn cb1(arg1: info.params[0].type.?) info.return_type.? {
-//             return cb.call(.{arg1});
-//         }
-//     };
-// }

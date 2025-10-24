@@ -2,7 +2,7 @@ const std = @import("std");
 const node_api = @import("node-api");
 
 const TestClass = @import("TestClass.zig");
-const Stats = @import("Stats.zig");
+
 const WrapTarget = @import("WrapTarget.zig");
 const Serialization = @import("Serialization.zig");
 comptime {
@@ -21,6 +21,7 @@ fn init(node: node_api.NodeContext) !?node_api.NodeValue {
         .TestClass = try node.defineClass(TestClass),
         .wrappedInstance = try node.wrapInstance(WrapTarget, .{ .foo = 123, .bar = "hopla" }),
         .functions = .{
+            .fnWithJsNewedNativeInstance = try node.defineFunction(fnWithJsNewedNativeInstance),
             .fnWithSerializedParams = try node.defineFunction(fnWithSerializedParams),
             .fnWithAllocatorParam = try node.defineFunction(fnWithAllocatorParam),
             .fnCallback = try node.defineFunction(fnCallback),
@@ -78,10 +79,18 @@ const MyUnion = union(MyUnionTag) { foo: u32, bar: []const u8 };
 //     return try node.serialize(.{ .msg = "Fucking hell!" });
 // }
 
-fn fnWithSerializedParams(i: i32, b: bool) !i32 {
-    std.log.debug("calling zig testFuncNative2 {any} {any}", .{ i, b });
+fn fnWithSerializedParams(i: i32, _: bool) !f32 {
+    // std.log.debug("calling zig testFuncNative2 {any} {any}", .{ i, b });
 
-    return 456;
+    var res: f32 = 0;
+    const ii: f32 = @floatFromInt(i);
+    var iii = i;
+    while (iii > 0) {
+        iii -= 1;
+        res += ii * 1.1;
+    }
+
+    return res;
 }
 
 fn sleep(milliseconds: u32) !i32 {
@@ -95,6 +104,11 @@ fn fnWithAllocatorParam(allocator: std.mem.Allocator, len: u32) ![]u8 {
 
     @memset(ret, @as(u8, 'A'));
     return ret;
+}
+
+fn fnWithJsNewedNativeInstance(newed_in_js: *TestClass) !*TestClass {
+    std.log.info("newed_in_js {any}", .{newed_in_js});
+    return newed_in_js;
 }
 
 // node_api.NodeFunction(*const fn (i32) i32)

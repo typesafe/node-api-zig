@@ -19,6 +19,8 @@ pub const NodeValueType = enum {
     BigInt,
 };
 
+// TODO: use napi_create_reference to support NodeValue.reference()?
+
 // napi_int8_array,
 // napi_uint8_array,
 // napi_uint8_clamped_array,
@@ -190,6 +192,7 @@ pub fn NodeFunction(comptime F: anytype) type {
         }
     };
 }
+
 fn TupleTypeOf(params: []const std.builtin.Type.Fn.Param) type {
     comptime var argTypes: [params.len]type = undefined;
     inline for (0..params.len) |i| {

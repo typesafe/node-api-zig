@@ -6,6 +6,25 @@ describe("defineFunction", () => {
     expect(addon.functions.fnWithSerializedParams).toBeFunction();
   });
 
+  it("should fail when called with missing arguments", () => {
+    expect(() => addon.functions.fnWithSerializedParams(123)).toThrow(
+      "MissingArguments"
+    );
+  });
+
+  it("should fail when called with argument of different type", () => {
+    expect(() => addon.functions.fnWithSerializedParams(123, "foo")).toThrow(
+      "BooleanExpected"
+    );
+  });
+
+  describe("with pointer to native class instanciated in JS", () => {
+    it("should unwrap the instance", () => {
+      const i = new addon.TestClass(123);
+      expect(addon.functions.fnWithJsNewedNativeInstance(i)).toBe(i);
+    });
+  });
+
   describe("with allocator parameter", () => {
     it("should serialize params and return values", () => {
       expect(addon.functions.fnWithAllocatorParam(42)).toEqual(
@@ -32,17 +51,33 @@ describe("defineFunction", () => {
       );
     });
   });
-  describe("with native parameters", () => {
-    it("should serialize params and return values", () => {
-      expect(addon.functions.fnWithSerializedParams(123, true)).toEqual(456);
-    });
-  });
+  // describe("with native parameters", () => {
+  //   it("calling 1M times", () => {
+  //     const start = performance.now();
+  //     for (var i = 0; i < 1_000_000; i++) {
+  //       addon.functions.fnWithSerializedParams(200);
+  //     }
+  //     console.log(performance.now() - start);
+  //   });
+  //   it("calling JS 1M times", () => {
+  //     let str = "";
+  //     function fn(i, b) {
+  //       var res = 0;
+  //       var ii = i;
+  //       while (i > 0) {
+  //         i -= 1;
+  //         res += ii * 1.1;
+  //       }
+  //       return res;
+  //     }
+  //     const start = performance.now();
 
-  describe("with native parameters", () => {
-    it("should serialize params and return values", () => {
-      expect(addon.functions.fnWithSerializedParams(123, true)).toEqual(456);
-    });
-  });
+  //     for (var i = 0; i < 1_000_000; i++) {
+  //       fn(200, true);
+  //     }
+  //     console.log(performance.now() - start);
+  //   });
+  // });
 });
 
 describe("defineAsyncFunction", () => {
