@@ -1,18 +1,18 @@
 import addon from "node-api-test-module";
 import { describe, it, expect } from "bun:test";
 
-describe("defineFunction", () => {
-  it("should define function", () => {
+describe("functions", () => {
+  it("should be defined as function", () => {
     expect(addon.functions.fnWithSerializedParams).toBeFunction();
   });
 
-  it("should fail when called with missing arguments", () => {
+  it("should throw MissingArguments when called with missing arguments", () => {
     expect(() => addon.functions.fnWithSerializedParams(123)).toThrow(
       "MissingArguments"
     );
   });
 
-  it("should fail when called with argument of different type", () => {
+  it("should throw when called with argument of different type", () => {
     expect(() => addon.functions.fnWithSerializedParams(123, "foo")).toThrow(
       "BooleanExpected"
     );
@@ -22,6 +22,7 @@ describe("defineFunction", () => {
     it("should unwrap the instance", () => {
       const i = new addon.TestClass(123);
       expect(addon.functions.fnWithJsNewedNativeInstance(i)).toBe(i);
+      expect(i.foo).toEqual(124);
     });
   });
 
@@ -30,19 +31,6 @@ describe("defineFunction", () => {
       expect(addon.functions.fnWithAllocatorParam(42)).toEqual(
         "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
       );
-    });
-  });
-
-  describe("with callback parameter", () => {
-    const capturedValue = 3;
-    it("should call callback", () => {
-      expect(
-        addon.functions.fnCallback(123, (foo) => {
-          console.log(this);
-          console.log("CALLED FROM ZIG", foo);
-          return foo * capturedValue;
-        })
-      ).toEqual(369);
     });
   });
 

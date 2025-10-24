@@ -90,6 +90,7 @@ fn fnWithAllocatorParam(allocator: std.mem.Allocator, len: u32) ![]u8 {
 }
 
 fn fnWithJsNewedNativeInstance(newed_in_js: *TestClass) !*TestClass {
+    newed_in_js.foo += 1;
     std.log.info("newed_in_js {any}", .{newed_in_js});
     return newed_in_js;
 }

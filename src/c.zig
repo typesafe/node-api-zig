@@ -3,50 +3,10 @@ pub const c = @cImport({
     @cInclude("node_api.h");
 });
 
-// pub const cc = wrapCLib(c);
-
-// fn wrapCLib(comptime T: type) type {
-//     const decls = @typeInfo(T).@"struct".decls;
-
-//     const N = decls.len;
-
-//     var fields: [N]std.builtin.Type.StructField = undefined;
-
-//     inline for (decls, 0..) |d, i| {
-//         const wrapper = opaque {
-//             pub fn f() NodeApiError!void {}
-//         }.f;
-//         const f : std.builtin.Type.Fn = .{
-//             .
-//         };
-//         fields[i] = .{
-//             .name = d.name,
-//             .type = d.ty,
-//             .default_value = null, // keep it simple; you can wire a default if you want
-//             .is_comptime = false,
-//             .alignment = @alignOf(d.ty),
-//         };
-//     }
-
-//     return @Type(.{
-//         .Struct = .{
-//             .layout = .Auto,
-//             .fields = &fields,
-//             .decls = &.{}, // no nested declarations (constants/functions) added here
-//             .is_tuple = false,
-//         },
-//     });
-// }
-
 /// Maps a node_api status codes to Zig errors.
 pub fn statusToError(status: c_uint) NodeApiError!void {
-    const v: NapiStatusValue = @enumFromInt(status);
-
-    if (v == NapiStatusValue.ok) {
-        return;
-    }
-
-    return switch (v) {
+    return switch (@as(NapiStatusValue, @enumFromInt(status))) {
+        NapiStatusValue.ok => return,
         NapiStatusValue.invalid_arg => NodeApiError.InvalidArg,
         NapiStatusValue.object_expected => NodeApiError.ObjectExpected,
         NapiStatusValue.string_expected => NodeApiError.StringExpected,
@@ -132,15 +92,12 @@ pub const NodeApiError = error{
 
 // https://nodejs.org/api/n-api.html#error-handling
 pub fn handleError(env: c.napi_env, err: anyerror) void {
-    std.log.debug("handling error for {any}", .{err});
+    std.log.debug("handling error '{any}'", .{err});
 
     var err_info: [*c]const c.napi_extended_error_info = undefined;
     if (c.napi_get_last_error_info(env, &err_info) != c.napi_ok) {
         @panic("failed to call `napi_get_last_error_info`.");
     }
-    // if (err_info != null) {
-    //     std.log.debug("err_infooo {s}", .{err_info.*.error_message});
-    // }
 
     // In many cases when a Node-API function is called and an exception is already pending, the function will return immediately with a napi_status of napi_pending_exception.
     // However, this is not the case for all functions. Node-API allows a subset of the functions to be called to allow for some minimal cleanup before returning to JavaScript.
@@ -153,8 +110,6 @@ pub fn handleError(env: c.napi_env, err: anyerror) void {
     } else {
         pending_exception = true;
     }
-
-    std.log.debug("pending_expeption {any}", .{pending_exception});
 
     if (pending_exception) {
         // the pending exception will be thrown in JS
