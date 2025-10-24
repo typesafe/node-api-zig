@@ -1,4 +1,5 @@
 The `node-api` Zig package provides [Node-API](https://nodejs.org/api/n-api.html) bindings for writing idiomatic Zig addons for V8-based runtimes like Node.JS or Bun.
+Thanks to its conventions-based approach it bridges the gap seamlessly, with almost no Node-API specific code!
 
 TODO:
 
