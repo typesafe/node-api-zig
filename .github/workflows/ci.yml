@@ -49,10 +49,10 @@ jobs:
       working-directory: tests
 
     - name: Build Zig project
-      run: zig build test
+      run: zig build
 
     - name: Run tests
-      run: bun test --reporter=github
+      run: bun test --reporter=junit --reporter-outfile=test-results.xml
       working-directory: tests
 
     - name: Upload test results
