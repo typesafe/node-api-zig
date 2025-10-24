@@ -18,6 +18,7 @@ pub fn build(b: *std.Build) void {
     node_api.addSystemIncludePath(node_api_headers.path("include"));
 
     const sample_addon = b.addLibrary(.{
+        .use_llvm = true,
         .linkage = .dynamic,
         .name = "sample-addon",
         .root_module = b.createModule(.{
