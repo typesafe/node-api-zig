@@ -5,26 +5,26 @@ const TestClass = @import("TestClass.zig");
 
 const WrapTarget = @import("WrapTarget.zig");
 const Serialization = @import("Serialization.zig");
+
 comptime {
     node_api.register(init);
 }
 
 fn init(node: node_api.NodeContext) !?node_api.NodeValue {
-    // const i = getInt();
-    // const ui = getUInt();
-    // const b = try node.deserialize(bool, try node.serialize(true));
+    const ptr = try std.heap.c_allocator.create(WrapTarget);
+    ptr.* = .{ .foo = 123, .bar = "hopla" };
 
-    // const ;
-
-    const v = try node.serialize(.{
-        .serialization = try node.defineClass(Serialization),
-        .TestClass = try node.defineClass(TestClass),
+    return try node.serialize(.{
+        .serialization = Serialization,
+        .TestClass = TestClass,
         .wrappedInstance = try node.wrapInstance(WrapTarget, .{ .foo = 123, .bar = "hopla" }),
+        .wrappedByConvention = ptr,
         .functions = .{
-            .fnWithJsNewedNativeInstance = try node.defineFunction(fnWithJsNewedNativeInstance),
-            .fnWithSerializedParams = try node.defineFunction(fnWithSerializedParams),
+            .fnWithJsNewedNativeInstance = fnWithJsNewedNativeInstance,
+            .fnWithSerializedParams = fnWithSerializedParams,
             .fnWithAllocatorParam = try node.defineFunction(fnWithAllocatorParam),
             .fnCallback = try node.defineFunction(fnCallback),
+            // async must still be done explicitly
             .fnCallbackAsync = try node.defineAsyncFunction(fnCallbackAsync),
             .asyncFunction = try node.defineAsyncFunction(sleep),
         },
@@ -35,24 +35,7 @@ fn init(node: node_api.NodeContext) !?node_api.NodeValue {
             .comptime_int = try node.deserialize(i32, try node.serialize(1234)),
             .float = try node.deserialize(f32, try node.serialize(12.34)),
         },
-        // .s = s,
-        // .x = x,
-        // .b = b,
-        // .foo = "foo",
-        // .bar = "bar",
-        // .int = 123,
-        // .f = 12.34,
-        // .i = i,
-        // .ui = ui,
-        // .nested = .{ .more = "foo" },
-        // .callMet = try node.createFunction(),
     });
-
-    // const v = try node.serialize(.{
-    //     .fun = try node.createFunc(testFuncNative2),
-    // });
-
-    return v;
 }
 
 fn getInt() i16 {

@@ -2,7 +2,9 @@ The `node-api` Zig package provides [Node-API](https://nodejs.org/api/n-api.html
 
 TODO:
 
+
 - [ ] Add GH pipeline (incl. test report)
+- [ ] auto-register class for members of type `type`.
 - [ ] Make `NodeFunction` thread safe by convention when it is used in an async function/method.
 - [ ] Add `NodeObject` for "by reference" access to JS objects from Zig
 - [ ] Add `NodeArray` for "by reference" access to JS objects from Zig

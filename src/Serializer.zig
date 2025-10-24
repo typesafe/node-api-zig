@@ -3,19 +3,23 @@ const lib = @import("c.zig");
 const c = lib.c;
 const s2e = lib.statusToError;
 const node_values = @import("node_values.zig");
-
+const NodeContext = @import("Node.zig").NodeContext;
 const NodeValue = node_values.NodeValue;
 const NodeObject = node_values.NodeObject;
 const NodeArray = node_values.NodeArray;
 const NodeFunction = node_values.NodeFunction;
 const registry = @import("references.zig").Registry;
+
 /// Converts a Zig value to a Node-API value. Memory for the node value is allocated by V8.
 pub fn serialize(env: c.napi_env, value: anytype) !c.napi_value {
     const T = @TypeOf(value);
 
+    const node = NodeContext.init(env);
     var res: c.napi_value = undefined;
 
     switch (@typeInfo(T)) {
+        .type => return (try node.defineClass(value)).napi_value,
+        .@"fn" => return (try node.defineFunction(value)).napi_value,
         .null => try s2e(c.napi_get_null(env, &res)),
         .void, .undefined => try s2e(c.napi_get_undefined(env, &res)),
         .bool => try s2e(c.napi_get_boolean(env, value, &res)),
