@@ -57,13 +57,26 @@ import fromZig from(zig-module.node);
 
 ## Type Conversions
 
+Struct types, functions, fields, parameters and return values are all converted by convention.
+Unsupported types result in compile errors.
+
+|Native type|Node type|Remarks|
+|-|-|-|
+|`type`|`Class` or `Function`|Returning or passing a struct `type` to JS, turns it into a class.<br>Returning or passing a `fn`, turns it into a JS-callable, well, function. |
+|`i32`,`i64`,`u32`|`number`| |
+|`u64`|`BigInt`| |
+|`[]const u8`, `[]u8`|`string`|UTF-8|
+|`[]const T`, `[]T`|`array`| |
+|`*T`|`Object`|Passing struct pointers to JS will wrap & track them.|
+|`NodeValue`|`any`|NodeValue can be used to access JS values by reference.|
+
 Function parameters and return types can be
 - native Zig types (unsupported types will result in compile time errors)
 - one of the NodeValue types to access values by reference.
 
-Native values and NodeValue instance can be converted using the NodeSerializer.
-- deserialize(comptime T: type, value: NodeValue, allocator. Allocator) T
-- serialize(value: anytype) NodeValue
+Native values and NodeValue instance can be converted using `Convert`:
+- `nativeFromNode(comptime T: type, value: NodeValue, allocator. Allocator) T`
+- `nodeFromNative(value: anytype) NodeValue`
 
 ## Define functions
 

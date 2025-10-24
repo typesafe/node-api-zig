@@ -38,7 +38,7 @@ fn init(node: node_api.NodeContext) !?node_api.NodeValue {
     });
 }
 
-fn getInt() i16 {
+fn getInt() i32 {
     return -456 + 45;
 }
 fn getUInt() u16 {

@@ -3,7 +3,7 @@ const lib = @import("c.zig");
 const c = lib.c;
 const s2e = lib.statusToError;
 
-const Serializer = @import("Serializer.zig");
+const Convert = @import("Convert.zig");
 
 // https://nodejs.org/api/n-api.html#napi_valuetype
 pub const NodeValueType = enum {
@@ -179,7 +179,7 @@ pub fn NodeFunction(comptime F: anytype) type {
         pub fn call(self: Self, args: TupleTypeOf(f.params)) !f.return_type.? {
             var js_args: [f.params.len]c.napi_value = undefined;
             inline for (0..args.len) |i| {
-                js_args[i] = try Serializer.serialize(self.napi_env, args[i]);
+                js_args[i] = try Convert.nodeFromNative(self.napi_env, args[i]);
             }
             var res: c.napi_value = undefined;
 
@@ -191,7 +191,7 @@ pub fn NodeFunction(comptime F: anytype) type {
             var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
             defer arena.deinit();
 
-            return try Serializer.deserialize(self.napi_env, f.return_type.?, res, arena.allocator());
+            return try Convert.nativeFromNode(self.napi_env, f.return_type.?, res, arena.allocator());
         }
     };
 }

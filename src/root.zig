@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const c = @import("c.zig").c;
-const Serializer = @import("Serializer.zig");
+const Convert = @import("Convert.zig");
 const NodeValues = @import("node_values.zig");
 /// Represents a Node VM Context.
 pub const NodeContext = @import("Node.zig").NodeContext;

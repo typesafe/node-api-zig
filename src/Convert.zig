@@ -11,7 +11,7 @@ const NodeFunction = node_values.NodeFunction;
 const registry = @import("references.zig").Registry;
 
 /// Converts a Zig value to a Node-API value. Memory for the node value is allocated by V8.
-pub fn serialize(env: c.napi_env, value: anytype) !c.napi_value {
+pub fn nodeFromNative(env: c.napi_env, value: anytype) !c.napi_value {
     const T = @TypeOf(value);
 
     const node = NodeContext.init(env);
@@ -29,28 +29,28 @@ pub fn serialize(env: c.napi_env, value: anytype) !c.napi_value {
                 switch (@bitSizeOf(T)) {
                     0...32 => try s2e(c.napi_create_int32(env, value, &res)),
                     33...64 => try s2e(c.napi_create_int64(env, value, &res)),
-                    else => |s| @compileError(std.fmt.comptimePrint("Cannot serialize value of type {s}, unsupported bitsize {d}", .{ @typeName(T), s })),
+                    else => |s| @compileError(std.fmt.comptimePrint("Cannot convert value of type '{s}', unsupported bitsize {d}", .{ @typeName(T), s })),
                 }
             } else {
                 switch (@bitSizeOf(T)) {
                     0...32 => try s2e(c.napi_create_uint32(env, value, &res)),
                     33...64 => try s2e(c.napi_create_bigint_uint64(env, value, &res)),
-                    else => |s| @compileError(std.fmt.comptimePrint("Cannot serialize value of type {s}, unsupported bitsize {d}", .{ @typeName(T), s })),
+                    else => |s| @compileError(std.fmt.comptimePrint("Cannot convert value of type '{s}', unsupported bitsize {d}", .{ @typeName(T), s })),
                 }
             }
         },
         .int => |i| {
             if (i.signedness == .signed) {
                 switch (i.bits) {
-                    0...32 => try s2e(c.napi_create_int32(env, value, &res)),
-                    33...64 => try s2e(c.napi_create_int64(env, value, &res)),
-                    else => |s| @compileError(std.fmt.comptimePrint("Cannot serialize value of type {s}, unsupported bitsize {d}", .{ @typeName(T), s })),
+                    32 => try s2e(c.napi_create_int32(env, value, &res)),
+                    64 => try s2e(c.napi_create_int64(env, value, &res)),
+                    else => |s| @compileError(std.fmt.comptimePrint("Cannot convert value of type '{s}', unsupported bitsize {d}", .{ @typeName(T), s })),
                 }
             } else {
                 switch (i.bits) {
-                    0...32 => try s2e(c.napi_create_uint32(env, value, &res)),
-                    33...64 => try s2e(c.napi_create_bigint_uint64(env, value, &res)),
-                    else => |s| @compileError(std.fmt.comptimePrint("Cannot serialize value of type {s}, unsupported bitsize {d}", .{ @typeName(T), s })),
+                    32 => try s2e(c.napi_create_uint32(env, value, &res)),
+                    64 => try s2e(c.napi_create_bigint_uint64(env, value, &res)),
+                    else => |s| @compileError(std.fmt.comptimePrint("Cannot convert value of type '{s}', unsupported bitsize {d}", .{ @typeName(T), s })),
                 }
             }
         },
@@ -70,7 +70,7 @@ pub fn serialize(env: c.napi_env, value: anytype) !c.napi_value {
         },
         .optional => {
             if (value) |val| {
-                return serialize(env, val);
+                return nodeFromNative(env, val);
             } else {
                 try s2e(c.napi_get_null(env, &res));
             }
@@ -82,11 +82,7 @@ pub fn serialize(env: c.napi_env, value: anytype) !c.napi_value {
                         return v;
                     }
 
-                    // TODO: could be wrapped value, do we need this?
-                    // how do we know if the instance was already wrapped before?
-                    // hashset?
-
-                    return serialize(env, value.*);
+                    return nodeFromNative(env, value.*);
                 },
                 .slice => {
                     std.log.debug("serializing {s} of type {s}", .{ value, @typeName(T) });
@@ -96,13 +92,13 @@ pub fn serialize(env: c.napi_env, value: anytype) !c.napi_value {
                         try s2e(c.napi_create_array_with_length(env, value.len, &res));
 
                         for (value, 0..) |item, i| {
-                            const el = try serialize(env, item);
+                            const el = try nodeFromNative(env, item);
                             try s2e(c.napi_set_element(env, res, i, el));
                         }
                     }
                 },
                 .many, .c => {
-                    @compileError("Cannot serialize c-style pointer values, they are not supported.");
+                    @compileError("Cannot convert c-style pointer values, they are not supported.");
                 },
             }
         },
@@ -114,21 +110,19 @@ pub fn serialize(env: c.napi_env, value: anytype) !c.napi_value {
             if (!s.is_tuple) {
                 try s2e(c.napi_create_object(env, &res));
                 inline for (s.fields) |field| {
-                    // std.log.debug("tuple field: {any}", .{field});
                     if (field.type == void) continue;
 
                     const field_val = @field(value, field.name);
 
-                    try s2e(c.napi_set_property(env, res, try serialize(env, field.name), try serialize(env, field_val)));
+                    try s2e(c.napi_set_property(env, res, try nodeFromNative(env, field.name), try nodeFromNative(env, field_val)));
                 }
             } else {
                 try s2e(c.napi_create_array_with_length(env, s.fields.len, &res));
                 inline for (s.fields, 0..) |field, i| {
-                    // std.log.debug("field: {any}", .{field});
                     if (field.type == void) continue;
 
                     const field_val = @field(value, field.name);
-                    try s2e(c.napi_set_element(env, res, i, try serialize(env, field_val)));
+                    try s2e(c.napi_set_element(env, res, i, try nodeFromNative(env, field_val)));
                 }
             }
         },
@@ -140,7 +134,7 @@ pub fn serialize(env: c.napi_env, value: anytype) !c.napi_value {
                 try s2e(c.napi_create_array_with_length(env, value.len, &res));
 
                 for (value, 0..) |item, i| {
-                    const el = try serialize(env, item);
+                    const el = try nodeFromNative(env, item);
                     try s2e(c.napi_set_element(env, res, i, el));
                 }
             }
@@ -151,28 +145,28 @@ pub fn serialize(env: c.napi_env, value: anytype) !c.napi_value {
 
                 const tag = @as(Tag, value);
                 const tag_name = @tagName(tag);
-                try s2e(c.napi_set_property(env, res, try serialize(env, "type"), try serialize(env, tag_name)));
+                try s2e(c.napi_set_property(env, res, try nodeFromNative(env, "type"), try nodeFromNative(env, tag_name)));
 
                 inline for (u.fields) |f| {
                     if (std.mem.eql(u8, f.name, tag_name)) {
                         if (f.type == void) break;
-                        try s2e(c.napi_set_property(env, res, try serialize(env, "value"), try serialize(env, @field(value, f.name))));
+                        try s2e(c.napi_set_property(env, res, try nodeFromNative(env, "value"), try nodeFromNative(env, @field(value, f.name))));
                         break;
                     }
                 }
             } else {
-                @compileError(std.fmt.comptimePrint("Cannot serialize value of type {s}, untagged unions are not supported.", .{@typeName(T)}));
+                @compileError(std.fmt.comptimePrint("Cannot convert value of type '{s}', untagged unions are not supported.", .{@typeName(T)}));
             }
         },
 
-        else => @compileError(std.fmt.comptimePrint("Cannot serialize value of type {s}", .{@typeName(T)})),
+        else => @compileError(std.fmt.comptimePrint("Cannot convert value of type '{s}'", .{@typeName(T)})),
     }
 
     return res;
 }
 
 /// Converts a Node-API value to a native Zig value.
-pub fn deserialize(env: c.napi_env, comptime T: type, js_value: c.napi_value, allocator: std.mem.Allocator) !T {
+pub fn nativeFromNode(env: c.napi_env, comptime T: type, js_value: c.napi_value, allocator: std.mem.Allocator) !T {
     var res: T = undefined;
 
     switch (@typeInfo(T)) {
@@ -180,33 +174,18 @@ pub fn deserialize(env: c.napi_env, comptime T: type, js_value: c.napi_value, al
         .int => |i| {
             if (i.signedness == .signed) {
                 switch (i.bits) {
-                    32 => {
-                        var tmp: i32 = undefined;
-                        try s2e(c.napi_get_value_int32(env, js_value, &tmp));
-                        // TODO: handle failing int casts
-                        return @intCast(tmp);
-                    },
-                    64 => {
-                        var tmp: i64 = undefined;
-                        try s2e(c.napi_get_value_int64(env, js_value, &tmp));
-                        return @intCast(tmp);
-                    },
-                    else => @compileError(std.fmt.comptimePrint("Cannot deserialize value of type {s}", .{@typeName(T)})),
+                    32 => try s2e(c.napi_get_value_int32(env, js_value, &res)),
+                    64 => try s2e(c.napi_get_value_int64(env, js_value, &res)),
+                    else => @compileError(std.fmt.comptimePrint("Cannot convert node value to '{s}'", .{@typeName(T)})),
                 }
             } else {
                 switch (i.bits) {
-                    0...32 => {
-                        var tmp: u32 = undefined;
-                        try s2e(c.napi_get_value_uint32(env, js_value, &tmp));
-                        return @intCast(tmp);
-                    },
-                    33...64 => {
-                        var tmp: u64 = undefined;
+                    32 => try s2e(c.napi_get_value_uint32(env, js_value, &res)),
+                    64 => {
                         var b: bool = undefined;
-                        try s2e(c.napi_get_value_bigint_uint64(env, js_value, &tmp, &b));
-                        return @intCast(tmp);
+                        try s2e(c.napi_get_value_bigint_uint64(env, js_value, &res, &b));
                     },
-                    else => @compileError(std.fmt.comptimePrint("Cannot deserialize value of type {s}", .{@typeName(T)})),
+                    else => @compileError(std.fmt.comptimePrint("Cannot convert node value to '{s}'", .{@typeName(T)})),
                 }
             }
         },
@@ -234,7 +213,7 @@ pub fn deserialize(env: c.napi_env, comptime T: type, js_value: c.napi_value, al
             try s2e(c.napi_typeof(env, js_value, &t));
             switch (t) {
                 c.napi_undefined, c.napi_null => return null,
-                else => return try deserialize(env, o.child, js_value, allocator),
+                else => return try nativeFromNode(env, o.child, js_value, allocator),
             }
         },
         .pointer => |p| {
@@ -261,7 +240,7 @@ pub fn deserialize(env: c.napi_env, comptime T: type, js_value: c.napi_value, al
                                 for (0..len) |i| {
                                     var elem: c.napi_value = undefined;
                                     try s2e(c.napi_get_element(env, js_value, i, &elem));
-                                    buf[i] = try deserialize(env, p.child, elem, allocator);
+                                    buf[i] = try nativeFromNode(env, p.child, elem, allocator);
                                 }
 
                                 return buf;
@@ -272,7 +251,7 @@ pub fn deserialize(env: c.napi_env, comptime T: type, js_value: c.napi_value, al
                     }
                 },
                 else => {
-                    @compileError("Cannot serialize c-style pointer values, they are not supported.");
+                    @compileError("Cannot convert c-style pointer values, they are not supported.");
                 },
             }
         },
@@ -288,13 +267,13 @@ pub fn deserialize(env: c.napi_env, comptime T: type, js_value: c.napi_value, al
             inline for (s.fields) |field| {
                 var v: c.napi_value = undefined;
                 try s2e(c.napi_get_named_property(env, js_value, field.name.ptr, &v));
-                @field(instance, field.name) = try deserialize(env, field.type, v, allocator);
+                @field(instance, field.name) = try nativeFromNode(env, field.type, v, allocator);
             }
 
             return instance;
         },
 
-        else => @compileError(std.fmt.comptimePrint("Cannot deserialize value of type {s}", .{@typeName(T)})),
+        else => @compileError(std.fmt.comptimePrint("Cannot convert node value to '{s}'", .{@typeName(T)})),
     }
 
     return res;

@@ -1,7 +1,7 @@
 import addon from "node-api-test-module";
 import { describe, it, expect } from "bun:test";
 
-describe("Serializer", () => {
+describe("Convert", () => {
   describe("serialize", () => {
     it("utf8 string", () => {
       expect(addon.serialization.serializeString()).toEqual("foo");

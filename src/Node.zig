@@ -5,7 +5,7 @@ const c = lib.c;
 const NodeApiError = lib.NodeApiError;
 const s2e = lib.statusToError;
 
-const Serializer = @import("Serializer.zig");
+const Convert = @import("Convert.zig");
 
 const NodeValues = @import("node_values.zig");
 const NodeValue = NodeValues.NodeValue;
@@ -504,12 +504,12 @@ pub const NodeContext = struct {
     pub fn serialize(self: Self, value: anytype) !NodeValue {
         return .{
             .napi_env = self.napi_env,
-            .napi_value = try Serializer.serialize(self.napi_env, value),
+            .napi_value = try Convert.nodeFromNative(self.napi_env, value),
         };
     }
 
     pub fn deserialize(self: Self, comptime T: type, value: NodeValue) !T {
-        return try Serializer.deserialize(self.napi_env, T, value.napi_value, std.heap.c_allocator);
+        return try Convert.nativeFromNode(self.napi_env, T, value.napi_value, std.heap.c_allocator);
     }
 
     pub fn handleError(self: Self, err: anyerror) void {
