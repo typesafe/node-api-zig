@@ -1,7 +1,4 @@
 {
-  // Use IntelliSense to learn about possible attributes.
-  // Hover to view descriptions of existing attributes.
-  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
   "version": "0.2.0",
   "configurations": [
     {
@@ -11,22 +8,6 @@
       "cwd": "./tests",
       "program": "/run/current-system/sw/bin/bun",
       "args": ["test"]
-    },
-    {
-      "name": "test defineFunction",
-      "type": "lldb",
-      "request": "launch",
-      "cwd": "./tests",
-      "program": "/run/current-system/sw/bin/bun",
-      "args": ["test", "--test-name-pattern", "(^ ?Serializer deserialize struct$)"]
-    },
-    {
-      "name": "test defineClass",
-      "type": "lldb",
-      "request": "launch",
-      "cwd": "./tests",
-      "program": "/run/current-system/sw/bin/bun",
-      "args": ["test", "--test-name-pattern", "defineClass"]
     }
   ]
 }
