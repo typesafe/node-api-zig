@@ -53,12 +53,11 @@ jobs:
 
       - name: Run tests
         run: bun test --reporter=junit --reporter-outfile=test-results.xml
-        working-directory: tests
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: test-results
-          path: tests/test-results.xml
+          path: test-results.xml
           retention-days: 30

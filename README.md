@@ -3,8 +3,6 @@ Thanks to its conventions-based approach it bridges the gap seamlessly, with alm
 
 TODO:
 
-
-- [ ] Add GH pipeline (incl. test report)
 - [ ] auto-register class for members of type `type`.
 - [ ] Make `NodeFunction` thread safe by convention when it is used in an async function/method.
 - [ ] Add `NodeObject` for "by reference" access to JS objects from Zig
