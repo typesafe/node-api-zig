@@ -97,8 +97,17 @@ pub fn nodeFromNative(env: c.napi_env, value: anytype) !c.napi_value {
                         }
                     }
                 },
-                .many, .c => {
-                    @compileError("Cannot convert c-style pointer values, they are not supported.");
+                .many => {
+                    std.log.debug("serializing {s} of type {s}", .{ value, @typeName(T) });
+                    if (p.child == u8) {
+                        try s2e(c.napi_create_string_utf8(env, value, std.mem.len(value), &res));
+                    } else {
+                        @compileError(std.fmt.comptimePrint("Cannot convert node value to '{s}', Cannot convert c-style pointer values, they are not supported.", .{@typeName(T)}));
+                    }
+                },
+                .c => {
+                    // @compileError("Cannot convert c-style pointer values, they are not supported.");
+                    @compileError(std.fmt.comptimePrint("Cannot convert node value to '{s}', Cannot convert c-style pointer values, they are not supported.", .{@typeName(T)}));
                 },
             }
         },
@@ -158,7 +167,6 @@ pub fn nodeFromNative(env: c.napi_env, value: anytype) !c.napi_value {
                 @compileError(std.fmt.comptimePrint("Cannot convert value of type '{s}', untagged unions are not supported.", .{@typeName(T)}));
             }
         },
-
         else => @compileError(std.fmt.comptimePrint("Cannot convert value of type '{s}'", .{@typeName(T)})),
     }
 
@@ -256,7 +264,7 @@ pub fn nativeFromNode(env: c.napi_env, comptime T: type, js_value: c.napi_value,
             }
         },
         .@"struct" => |s| {
-            if (T == NodeValue) {
+            if (T == NodeValue or T == NodeObject or T == NodeArray) {
                 return T{ .napi_env = env, .napi_value = js_value };
             }
             if (@hasDecl(T, "__is_node_function")) {

@@ -69,6 +69,7 @@ pub const NodeValue = struct {
         return v;
     }
 
+    /// Casts the value to an NodeObject. Fails is the typeof != .Object.
     pub fn asObject(self: NodeValue.Self) !NodeObject {
         if (self.typeof() == .Object) {
             return NodeObject{
@@ -80,6 +81,7 @@ pub const NodeValue = struct {
         return error.NodeValueIsNoObject;
     }
 
+    /// Casts the value to an NodeArray. Fails is the typeof != .Array.
     pub fn asArray(self: NodeValue.Self) !NodeArray {
         if (self.typeof() == .Object) {
             return NodeObject{
@@ -90,19 +92,6 @@ pub const NodeValue = struct {
 
         return error.NodeValueIsNoObject;
     }
-
-    pub fn asFunction(self: NodeValue.Self) !NodeFunction {
-        if (try self.typeof() == .Function) {
-            return NodeFunction{
-                .napi_env = self.napi_env,
-                .napi_value = self.napi_value,
-            };
-        }
-
-        return error.NodeValueIsNoFunction;
-    }
-
-    // TODO: more as... methods
 
     pub fn isArray(self: NodeValue.Self) !bool {
         return self.is(c.napi_is_array);
@@ -136,9 +125,9 @@ pub const NodeValue = struct {
         return self.is(c.napi_is_promise);
     }
 
-    fn is(self: NodeValue.Self, f: anytype) !bool {
+    fn is(self: NodeValue.Self, is_fn: anytype) !bool {
         var b: bool = undefined;
-        s2e(f(self.napi_env, self.napi_value, &b));
+        s2e(is_fn(self.napi_env, self.napi_value, &b));
         return b;
     }
 };
@@ -157,9 +146,50 @@ pub const NodeObject = struct {
         };
     }
 
-    // set prop
+    /// Gets the value of a property.
+    pub fn get(self: NodeObject.Self, property_name: []const u8) !NodeValue {
+        var v: c.napi_value = undefined;
+        try s2e(c.napi_get_named_property(self.napi_env, self.napi_value, property_name.ptr, &v));
+        return NodeValue{ .napi_env = self.napi_env, .napi_value = v };
+    }
 
-    // get prop
+    /// Sets the value of a property.
+    pub fn set(self: NodeObject.Self, property_name: []const u8, value: NodeValue) !NodeValue {
+        try s2e(c.napi_set_named_property(self.napi_env, self.napi_value, property_name.ptr, value.napi_value));
+        return value;
+    }
+
+    /// Gets a NodeValue indicating wether the object has a property with the specified name.
+    pub fn has(self: NodeObject.Self, property_name: []const u8) !bool {
+        var v: bool = undefined;
+        try s2e(c.napi_has_named_property(self.napi_env, self.napi_value, property_name.ptr, &v));
+        return v;
+    }
+
+    /// Gets a NodeValue indicating wether the object has the named own property. key must be a string or a symbol, or an error will be thrown.
+    pub fn hasOwn(self: NodeObject.Self, property_name: []const u8) !bool {
+        var v: bool = undefined;
+        try s2e(c.napi_has_own_property(self.napi_env, self.napi_value, try Convert.nodeFromNative(self.napi_env, property_name), &v));
+        return v;
+    }
+    /// Gets the value of a property.
+    pub fn delete(self: NodeObject.Self, property_name: []const u8) !bool {
+        var v: bool = undefined;
+        try s2e(c.napi_delete_property(
+            self.napi_env,
+            self.napi_value,
+            try Convert.nodeFromNative(self.napi_env, property_name),
+            &v,
+        ));
+        return v;
+    }
+
+    /// Returns the names of the enumerable properties as a NodeArray of strings. Symbol keys will not be included.
+    pub fn getPropertyNames(self: NodeObject.Self) !NodeArray {
+        var v: c.napi_value = undefined;
+        try s2e(c.napi_get_property_names(self.napi_env, self.napi_value, &v));
+        return NodeArray{ .napi_env = self.napi_env, .napi_value = v };
+    }
 };
 
 /// Represents a JS function.

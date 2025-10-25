@@ -8,6 +8,8 @@ pub const NodeContext = @import("Node.zig").NodeContext;
 
 /// Represents a Node value.
 pub const NodeValue = NodeValues.NodeValue;
+pub const NodeObject = NodeValues.NodeObject;
+pub const NodeArray = NodeValues.NodeArray;
 pub const NodeFunction = NodeValues.NodeFunction;
 
 /// The InitFunction to pass to the `register` method. The `ctx` parameter
