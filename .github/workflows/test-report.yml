@@ -12,9 +12,14 @@ jobs:
     report:
         runs-on: ubuntu-latest
         steps:
-            - uses: dorny/test-reporter@v2
+            - name: Test Summary
+              uses: test-summary/action@v2
               with:
-                  artifact: test-results
-                  name: Tests
-                  path: "*.xml"
-                  reporter: java-junit
+                  paths: "*.xml"
+              if: always()
+            # - uses: dorny/test-reporter@v2
+            #   with:
+            #       artifact: test-results
+            #       name: Tests
+            #       path: "*.xml"
+            #       reporter: java-junit
