@@ -20,6 +20,15 @@ describe("NodeArray", () => {
     });
   });
 
+    describe("has", () => {
+    it("should return true for existing element", () => {
+      expect(addon.nodeArray.has([123, 456], 1)).toEqual(true);
+    });
+    it("should return false for invalid index ", () => {
+      expect(addon.nodeArray.has([], 1)).toEqual(false);
+    });
+  });
+
   describe("set", () => {
     it("should set value at index", () => {
       const arr = [1, 2, 3] as any[];

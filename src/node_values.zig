@@ -205,26 +205,32 @@ pub const NodeArray = struct {
         };
     }
 
+    /// Gets the number of items in the array.
     pub fn len(self: NodeArray.Self) !u32 {
         var v: u32 = undefined;
         try s2e(c.napi_get_array_length(self.napi_env, self.napi_value, &v));
         return v;
     }
 
-    /// Gets a NodeValue indicating wether the object has a property with the specified name.
+    /// Gets the NodeValue at the specified index.
     pub fn get(self: NodeArray.Self, index: u32) !NodeValue {
         var v: c.napi_value = undefined;
         try s2e(c.napi_get_element(self.napi_env, self.napi_value, index, &v));
         return NodeValue{ .napi_env = self.napi_env, .napi_value = v };
     }
 
-    /// Set the specified NodeValue at the specified index of the NodeArray.
+    /// Sets the specified NodeValue at the specified index.
     pub fn set(self: NodeArray.Self, index: u32, value: NodeValue) !NodeValue {
         try s2e(c.napi_set_element(self.napi_env, self.napi_value, index, value.napi_value));
         return value;
     }
 
-    // get/set [], push, splice, etc.
+    /// Gets whether the array has an element at the specified index.
+    pub fn has(self: NodeArray.Self, index: u32) !bool {
+        var v: bool = undefined;
+        try s2e(c.napi_has_element(self.napi_env, self.napi_value, index, &v));
+        return v;
+    }
 };
 
 /// Represents a JS function.

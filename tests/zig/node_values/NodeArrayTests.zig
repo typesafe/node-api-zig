@@ -24,3 +24,7 @@ pub fn get(arr: NodeArray, index: u32) !NodeValue {
 pub fn set(arr: NodeArray, index: u32, v: NodeValue) !NodeValue {
     return try arr.set(index, v);
 }
+
+pub fn has(arr: NodeArray, index: u32) !bool {
+    return try arr.has(index);
+}
