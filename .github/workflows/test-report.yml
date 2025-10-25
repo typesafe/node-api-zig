@@ -18,14 +18,27 @@ jobs:
                   name: test-results
                   run-id: ${{ github.event.workflow_run.id }}
                   github-token: ${{ secrets.GITHUB_TOKEN }}
-            - name: Test Summary
-              uses: test-summary/action@v2
+            - id: parse_tests
+              name: parse test results
+              uses: QwerMike/xpath-action@v1
               with:
-                  paths: "*.xml"
-              if: always()
-            # - uses: dorny/test-reporter@v2
-            #   with:
-            #       artifact: test-results
-            #       name: Tests
-            #       path: "*.xml"
-            #       reporter: java-junit
+                  filename: "test-results.xml"
+                  expression: "//testsuites/@tests"
+            - id: parse_failures
+              name: parse test results
+              uses: QwerMike/xpath-action@v1
+              with:
+                  filename: "test-results.xml"
+                  expression: "//testsuites/@failures"
+            - name: Update test-results gist
+              uses: schneegans/dynamic-badges-action@v1.7.0
+              with:
+                  auth: ${{ secrets.GIST_SECRET }}
+                  gistID: 26882516c7ac38bf94a81784f966bd86
+                  filename: node-api-zig-test-badge.json
+                  label: "test"
+                  namedLogo: "zig"
+                  message: "${{steps.parse_tests.outputs.result}} tests / ${{steps.parse_failures.outputs.result}} failures"
+                  color: "#F7A41D"
+
+
