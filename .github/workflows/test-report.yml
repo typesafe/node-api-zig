@@ -12,6 +12,10 @@ jobs:
     report:
         runs-on: ubuntu-latest
         steps:
+            - name: download test results artifact
+              uses: actions/download-artifact@v5
+              with:
+                  name: test-results
             - name: Test Summary
               uses: test-summary/action@v2
               with:
