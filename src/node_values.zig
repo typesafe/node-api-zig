@@ -192,6 +192,41 @@ pub const NodeObject = struct {
     }
 };
 
+pub const NodeArray = struct {
+    const Self = @This();
+
+    napi_env: c.napi_env,
+    napi_value: c.napi_value,
+
+    pub fn asValue(self: NodeArray.Self) !NodeValue {
+        return NodeValue{
+            .napi_env = self.napi_env,
+            .napi_value = self.napi_value,
+        };
+    }
+
+    pub fn len(self: NodeArray.Self) !u32 {
+        var v: u32 = undefined;
+        try s2e(c.napi_get_array_length(self.napi_env, self.napi_value, &v));
+        return v;
+    }
+
+    /// Gets a NodeValue indicating wether the object has a property with the specified name.
+    pub fn get(self: NodeArray.Self, index: u32) !NodeValue {
+        var v: c.napi_value = undefined;
+        try s2e(c.napi_get_element(self.napi_env, self.napi_value, index, &v));
+        return NodeValue{ .napi_env = self.napi_env, .napi_value = v };
+    }
+
+    /// Set the specified NodeValue at the specified index of the NodeArray.
+    pub fn set(self: NodeArray.Self, index: u32, value: NodeValue) !NodeValue {
+        try s2e(c.napi_set_element(self.napi_env, self.napi_value, index, value.napi_value));
+        return value;
+    }
+
+    // get/set [], push, splice, etc.
+};
+
 /// Represents a JS function.
 pub fn NodeFunction(comptime F: anytype) type {
     const f = switch (@typeInfo(F)) {
@@ -234,24 +269,3 @@ fn TupleTypeOf(params: []const std.builtin.Type.Fn.Param) type {
 
     return std.meta.Tuple(&argTypes);
 }
-pub const NodeArray = struct {
-    const Self = @This();
-
-    napi_env: c.napi_env,
-    napi_value: c.napi_value,
-
-    fn len(self: NodeValue.Self) !u32 {
-        var v: u32 = undefined;
-        s2e(c.napi_get_array_length(self.napi_env, self.napi_value, &v));
-        return v;
-    }
-
-    pub fn asValue(self: NodeArray.Self) !NodeValue {
-        return NodeValue{
-            .napi_env = self.napi_env,
-            .napi_value = self.napi_value,
-        };
-    }
-
-    // get/set [], push, splice, etc.
-};

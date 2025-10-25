@@ -3,6 +3,7 @@ const node_api = @import("node-api");
 
 const TestClass = @import("TestClass.zig");
 const NodeObjectTests = @import("node_values/NodeObjectTests.zig");
+const NodeArrayTests = @import("node_values/NodeArrayTests.zig");
 const WrapTarget = @import("WrapTarget.zig");
 const Serialization = @import("Serialization.zig");
 
@@ -16,6 +17,7 @@ fn init(node: node_api.NodeContext) !?node_api.NodeValue {
 
     return try node.serialize(.{
         .nodeObject = NodeObjectTests,
+        .nodeArray = NodeArrayTests,
         .serialization = Serialization,
         .TestClass = TestClass,
         .wrappedInstance = try node.wrapInstance(WrapTarget, .{ .foo = 123, .bar = "hopla" }),
