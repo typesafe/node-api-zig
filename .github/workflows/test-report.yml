@@ -20,16 +20,16 @@ jobs:
                   github-token: ${{ secrets.GITHUB_TOKEN }}
             - id: parse_tests
               name: parse test results
-              uses: QwerMike/xpath-action@v1
+              uses: m-ringler/get-xpath@v3
               with:
-                  filename: "test-results.xml"
-                  expression: "//testsuites/@tests"
+                  xml-file: "test-results.xml"
+                  xpath: "//testsuites/@tests"
             - id: parse_failures
               name: parse test results
-              uses: QwerMike/xpath-action@v1
+              uses: m-ringler/get-xpath@v3
               with:
-                  filename: "test-results.xml"
-                  expression: "//testsuites/@failures"
+                  xml-file: "test-results.xml"
+                  xpath: "//testsuites/@failures"
             - name: Update test-results gist
               uses: schneegans/dynamic-badges-action@v1.7.0
               with:
@@ -38,7 +38,5 @@ jobs:
                   filename: node-api-zig-test-badge.json
                   label: "test"
                   namedLogo: "zig"
-                  message: "${{steps.parse_tests.outputs.result}} tests / ${{steps.parse_failures.outputs.result}} failures"
+                  message: "${{steps.parse_tests.outputs.info}} tests / ${{steps.parse_failures.outputs.info}} failures"
                   color: "#F7A41D"
-
-
