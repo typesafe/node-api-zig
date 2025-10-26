@@ -39,7 +39,7 @@ pub const NodeContext = struct {
         const lifetime = getLifetimeHandler(T);
         const props = getProps(T);
         var class: c.napi_value = undefined;
-        s2e(c.napi_define_class(self.napi_env, "Foo", 3, lifetime.init, null, props.len, props.ptr, &class)) catch unreachable;
+        s2e(c.napi_define_class(self.napi_env, @typeName(T), @typeName(T).len, lifetime.init, null, props.len, props.ptr, &class)) catch unreachable;
 
         return NodeValue.init(self.napi_env, class);
     }
@@ -168,13 +168,17 @@ pub const NodeContext = struct {
             pub fn init(env: c.napi_env, cb: c.napi_callback_info) callconv(.c) c.napi_value {
                 std.log.info("init {any} {any} {any}", .{ env, cb, T });
 
-                const init_fn = @field(T, "init");
-
                 var new_target: c.napi_value = null;
                 if (c.napi_get_new_target(env, cb, &new_target) != c.napi_ok or new_target == null) {
                     _ = c.napi_throw_error(env, null, "Constructor must be called with `new`.");
                     return null;
                 }
+
+                // TODO: if no init, use args object to set fields
+                // TODO: if no fields -> treat as namespace
+                // if (@hasField(T, "init")) {}
+
+                const init_fn = @field(T, "init");
 
                 const params = @typeInfo(@TypeOf(init_fn)).@"fn".params;
 
@@ -254,7 +258,7 @@ pub const NodeContext = struct {
                     const self: *T = @ptrCast(@alignCast(data.?));
                     std.log.info(" Finalizer data {any} {any}", .{ data, self });
                     freee(T, self);
-                    registry.wrapped_instances.remove(@intFromPtr(self));
+                    registry.untrack(self);
                 }
             }
 
