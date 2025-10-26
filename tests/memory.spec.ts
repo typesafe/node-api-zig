@@ -1,6 +1,8 @@
-import addon from "node-api-test-module";
 import { describe, it, expect } from "bun:test";
 import { gc, sleep } from "bun";
+
+import requireTestModule from "./zig_modules";
+const addon = requireTestModule("test-module");
 
 // this will be GC'ed (and finalized)
 new addon.TestClass(12);

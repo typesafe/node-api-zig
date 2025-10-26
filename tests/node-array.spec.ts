@@ -1,5 +1,7 @@
-import addon from "node-api-test-module";
 import { describe, it, expect } from "bun:test";
+
+import requireTestModule from "./zig_modules";
+const addon = requireTestModule("test-module");
 
 describe("NodeArray", () => {
   describe("len", () => {
@@ -20,7 +22,7 @@ describe("NodeArray", () => {
     });
   });
 
-    describe("has", () => {
+  describe("has", () => {
     it("should return true for existing element", () => {
       expect(addon.nodeArray.has([123, 456], 1)).toEqual(true);
     });

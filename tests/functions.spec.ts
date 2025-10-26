@@ -1,5 +1,7 @@
-import addon from "node-api-test-module";
 import { describe, it, expect } from "bun:test";
+
+import requireTestModule from "./zig_modules";
+const addon = requireTestModule("test-module");
 
 describe("functions", () => {
   it("should be defined as function", () => {

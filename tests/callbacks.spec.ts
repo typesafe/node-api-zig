@@ -1,5 +1,8 @@
-import addon from "node-api-test-module";
+import requireTestModule from "./zig_modules";
+const addon = requireTestModule("test-module");
+
 import { describe, it, expect } from "bun:test";
+
 
 describe("callback parameters", () => {
   const capturedValue = 3;
