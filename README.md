@@ -1,11 +1,39 @@
-
 The `node-api` Zig package provides [Node-API](https://nodejs.org/api/n-api.html) bindings for writing idiomatic Zig addons for V8-based runtimes like Node.JS or Bun.
 Thanks to its conventions-based approach it bridges the gap seamlessly, with almost no Node-API specific code!
 
-![build-badge](https://img.shields.io/github/actions/workflow/status/typesafe/node-api-zig/ci.yml
-)
+![build-badge](https://img.shields.io/github/actions/workflow/status/typesafe/node-api-zig/ci.yml)
 ![test-badge](https://img.shields.io/endpoint?url=https%3A%2F%2Fgist.githubusercontent.com%2Ftypesafe%2F26882516c7ac38bf94a81784f966bd86%2Fraw%2Fnode-api-zig-test-badge.json)
 
+```zig
+const node_api = @import("node-api");
+const Options = @import("Options");
+
+comptime {
+    // or node_api.init(fn (node) NodeValue) for runtime values
+    node_api.@"export"(encrypt);
+}
+
+fn encrypt(value: []const u8, options: Options, allocator: std.mem.Allocator) ![]const u8 {
+    const res = allocator.alloc(u8, 123);
+    errdefer allocator.free(res);
+
+    // ...
+
+    return res; // freed by node-api
+}
+
+```
+
+```TypeScript
+import { createRequire } from "module";
+const require = createRequire(import.meta.url);
+
+const encrypt = require("zig-module.node");
+
+// call zig function
+const m = encrypt("secret", { salt: "..."});
+
+```
 
 TODO:
 
@@ -35,7 +63,6 @@ TODO:
 
 # Getting started
 
-
 TODO
 
 # Features
@@ -64,21 +91,23 @@ import fromZig from(zig-module.node);
 Struct types, functions, fields, parameters and return values are all converted by convention.
 Unsupported types result in compile errors.
 
-|Native type|Node type|Remarks|
-|-|-|-|
-|`type`|`Class` or `Function`|Returning or passing a struct `type` to JS, turns it into a class.<br>Returning or passing a `fn`, turns it into a JS-callable, well, function. |
-|`i32`,`i64`,`u32`|`number`| |
-|`u64`|`BigInt`| |
-|`[]const u8`, `[]u8`|`string`|UTF-8|
-|`[]const T`, `[]T`|`array`| |
-|`*T`|`Object`|Passing struct pointers to JS will wrap & track them.|
-|`NodeValue`|`any`|NodeValue can be used to access JS values by reference.|
+| Native type          | Node type             | Remarks                                                                                                                                         |
+| -------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `type`               | `Class` or `Function` | Returning or passing a struct `type` to JS, turns it into a class.<br>Returning or passing a `fn`, turns it into a JS-callable, well, function. |
+| `i32`,`i64`,`u32`    | `number`              |                                                                                                                                                 |
+| `u64`                | `BigInt`              |                                                                                                                                                 |
+| `[]const u8`, `[]u8` | `string`              | UTF-8                                                                                                                                           |
+| `[]const T`, `[]T`   | `array`               |                                                                                                                                                 |
+| `*T`                 | `Object`              | Passing struct pointers to JS will wrap & track them.                                                                                           |
+| `NodeValue`          | `any`                 | NodeValue can be used to access JS values by reference.                                                                                         |
 
 Function parameters and return types can be
+
 - native Zig types (unsupported types will result in compile time errors)
 - one of the NodeValue types to access values by reference.
 
 Native values and NodeValue instance can be converted using `Convert`:
+
 - `nativeFromNode(comptime T: type, value: NodeValue, allocator. Allocator) T`
 - `nodeFromNative(value: anytype) NodeValue`
 
@@ -93,15 +122,12 @@ Arguments can be of type:
 - optional
 - enum
 - NodeXxx values for references
-## Define async functions
 
+## Define async functions
 
 ## Define classes
 
 `node.defineClass` transforms a Zig struct to a JS-accessible class by convention:
-
-
-
 
 ```zig
 
@@ -134,7 +160,6 @@ const MyClass = struct {
 
 ```
 
-
 ### Contstructors
 
 `init` maps to `new`.
@@ -151,8 +176,6 @@ const MyClass = struct {
 
 ## Memory management
 
-
-
 - class instances are allocated and freed automatically
   - new-ing instance (from JS) will allocate memory (and update V8 stats)
   - GC finalizers will automatically free the memory (and update V8 stats)
@@ -160,28 +183,28 @@ const MyClass = struct {
   - when the are store as field values the will be freed as part of the finalization process
     - existing field values must be freed manually when they are overwritten!
 
-
-
-
-/*
+/\*
 
 Scenarios:
 
 native (wrapped) instance lifecycle:
+
 - new in JS -> finalize in Zig
 - create in Zig -> finalize in Zig
 
 external instance memory:
+
 - arena per instance?
 - managed by instance if instance has allocator field
 
 parameters and return values:
+
 - pointers to structs result in uwrapped values
 - parameters and return type memory
   - arena per function call
 
 setting field values
+
 - frees previous value, if any
 
-
- */
+  \*/

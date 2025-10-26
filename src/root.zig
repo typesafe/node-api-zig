@@ -3,21 +3,48 @@ const std = @import("std");
 const c = @import("c.zig").c;
 const Convert = @import("Convert.zig");
 const NodeValues = @import("node_values.zig");
-/// Represents a Node VM Context.
-pub const NodeContext = @import("Node.zig").NodeContext;
 
-/// Represents a Node value.
+pub const NodeContext = @import("Node.zig").NodeContext;
 pub const NodeValue = NodeValues.NodeValue;
 pub const NodeObject = NodeValues.NodeObject;
 pub const NodeArray = NodeValues.NodeArray;
 pub const NodeFunction = NodeValues.NodeFunction;
 
-/// The InitFunction to pass to the `register` method. The `ctx` parameter
-/// represents the Node context. The returned value becomes the `exports` value
-/// of the JS module.
-pub const InitFunction = fn (ctx: NodeContext) anyerror!?NodeValue;
+/// Exports the specified comptime value as a native Node-API module.
+///
+/// Example:
+///
+/// ```
+/// const std = @import("std");
+/// const node_api = @import("node-api");
+///
+/// comptime {
+///     node_api.@"export"(.{
+///         .fn = function,
+///         .Class = Class,
+///     });
+/// }
+/// ```
+pub fn @"export"(comptime value: anytype) void {
+    const module = opaque {
+        pub fn napi_register_module_v1(env: c.napi_env, _: c.napi_value) callconv(.c) c.napi_value {
+            const node = NodeContext.init(env);
 
-/// Initializes a native Node-API module. Example:
+            const exports = node.serialize(value) catch |err| {
+                node.handleError(err);
+                return null;
+            };
+
+            return exports.napi_value;
+        }
+    };
+
+    registerModule(&module.napi_register_module_v1);
+}
+
+/// Initializes a native Node-API module by returning a runtime-known value.
+///
+/// Example:
 ///
 /// ```
 /// const std = @import("std");
@@ -32,12 +59,12 @@ pub const InitFunction = fn (ctx: NodeContext) anyerror!?NodeValue;
 ///     return try node.createString("hello!");
 /// }
 /// ```
-pub fn register(comptime init_fn: InitFunction) void {
+pub fn init(comptime f: InitFunction) void {
     const module = opaque {
         pub fn napi_register_module_v1(env: c.napi_env, exp: c.napi_value) callconv(.c) c.napi_value {
-            const node = NodeContext{ .napi_env = env };
+            const node = NodeContext.init(env);
 
-            const exports = init_fn(node) catch |err| {
+            const exports = f(node) catch |err| {
                 node.handleError(err);
                 return null;
             };
@@ -46,5 +73,14 @@ pub fn register(comptime init_fn: InitFunction) void {
         }
     };
 
-    @export(&module.napi_register_module_v1, .{ .name = "napi_register_module_v1" });
+    registerModule(&module.napi_register_module_v1);
+}
+
+/// The InitFunction to pass to the `register` method. The `ctx` parameter
+/// represents the Node context. The returned value becomes the `exports` value
+/// of the JS module.
+pub const InitFunction = fn (ctx: NodeContext) anyerror!?NodeValue;
+
+inline fn registerModule(comptime ptr: *const anyopaque) void {
+    @export(ptr, .{ .name = "napi_register_module_v1" });
 }

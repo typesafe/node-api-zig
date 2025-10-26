@@ -188,7 +188,11 @@ pub fn nativeFromNode(env: c.napi_env, comptime T: type, js_value: c.napi_value,
                 }
             } else {
                 switch (i.bits) {
-                    32 => try s2e(c.napi_get_value_uint32(env, js_value, &res)),
+                    0...32 => {
+                        var tmp: u32 = undefined;
+                        try s2e(c.napi_get_value_uint32(env, js_value, &tmp));
+                        return @intCast(tmp);
+                    },
                     64 => {
                         var b: bool = undefined;
                         try s2e(c.napi_get_value_bigint_uint64(env, js_value, &res, &b));

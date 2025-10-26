@@ -8,7 +8,7 @@ const WrapTarget = @import("WrapTarget.zig");
 const Serialization = @import("Serialization.zig");
 
 comptime {
-    node_api.register(init);
+    node_api.init(init);
 }
 
 fn init(node: node_api.NodeContext) !?node_api.NodeValue {

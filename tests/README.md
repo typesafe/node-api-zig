@@ -1,3 +1,0 @@
-
-## function.spec.ts
-
