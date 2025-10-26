@@ -4,6 +4,22 @@ Thanks to its conventions-based approach it bridges the gap seamlessly, with alm
 ![build-badge](https://img.shields.io/github/actions/workflow/status/typesafe/node-api-zig/ci.yml)
 ![test-badge](https://img.shields.io/endpoint?url=https%3A%2F%2Fgist.githubusercontent.com%2Ftypesafe%2F26882516c7ac38bf94a81784f966bd86%2Fraw%2Fnode-api-zig-test-badge.json)
 
+## Features
+
+- **function mapping**, including async support (auto-conversion to Promises)
+- **class mapping**, incl. support for fields, instance (async) methods, satic (async) methods.
+- **auto-wrapping** of native objects instances, similar to defining classes but for instances created in native Zig code
+- **memory management** with convention-based `init`, `deinit` support & `allocator` injection
+- `errorunion` support
+- mapping JS values
+  - by value: through (de)serialization or various types
+  - by reference
+    - Zig-managed values: through pointers to (wrapped) native Zig values
+    - JS-managed values: through wrappers types (`NodeValue` et.al.) for read/write
+  - typesafe callbacks: `NodeFunction(fn (u32, u32) !u32)`
+
+## Example
+
 ```zig
 const node_api = @import("node-api");
 const Options = @import("Options");
@@ -47,23 +63,55 @@ TODO:
   - [ ] `ExternalArrayBuffer`
 - [ ] Use `Result(T, E)` as alternative to `errorunion`s for improved error messages.
 
-# Features
-
-- **function mapping**, including async support (auto-conversion to Promises)
-- **class mapping**, incl. support for fields, instance methods, satic methods
-- **auto-wrapping** of native objects instances, similar to defining classes but for instances created in native Zig code
-- **memory management** with convention-based `init`, `deinit` support & `allocator` injection
-- `errorunion` support
-- mapping JS values
-  - by value: through (de)serialization or various types
-  - by reference
-    - Zig-managed values: through pointers to (wrapped) native Zig values
-    - JS-managed values: through wrappers types (`NodeValue` et.al.) for read/write
-  - typesafe callbacks: `NodeFunction(fn (u32, u32) !u32)`
-
 # Getting started
 
-TODO
+Install the `node_api` (note the underscore) dependency
+
+```sh
+> zig fetch --save https://github.com/typesafe/node-api-zig/archive/refs/tags/v0.0.3-beta.tar.gz
+```
+
+Add the `node-api` (note the hyphen) module to your library.
+
+```zig
+const std = @import("std");
+
+pub fn build(b: *std.Build) void {
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
+
+    const mod = b.addModule("root", .{
+        .root_source_file = b.path("src/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const node_api = b.dependency("node_api", .{});
+    mod.addImport("node-api", node_api.module("node-api"));
+
+    const lib = b.addLibrary(.{
+        // needed on Linux
+        .use_llvm = true,
+        .name = "my-native-node-library",
+        .root_module = mod,
+    });
+
+    b.installArtifact(lib);
+}
+```
+
+Initialize your Node-API extension:
+
+```zig
+const std = @import("std");
+const node = @import("node-api");
+
+comptime {
+    node.@"export"(.{
+      // functions, types (for classes), values
+     });
+}
+```
 
 # Features
 

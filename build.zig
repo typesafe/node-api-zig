@@ -32,7 +32,7 @@ pub fn build(b: *std.Build) void {
                     .directory => {
                         std.log.info("tests/zig_modules/{s}/src/root.zig", .{entry.name});
 
-                        const mod = b.addLibrary(.{
+                        const lib = b.addLibrary(.{
                             // imprtant, works without on MacOS, but not on Linux
                             .use_llvm = true,
                             .linkage = .dynamic,
@@ -43,11 +43,11 @@ pub fn build(b: *std.Build) void {
                                 .target = target,
                             }),
                         });
-                        mod.root_module.addImport("node-api", node_api);
+                        lib.root_module.addImport("node-api", node_api);
 
                         // important
-                        mod.linker_allow_shlib_undefined = true;
-                        mod.linkLibC();
+                        lib.linker_allow_shlib_undefined = true;
+                        lib.linkLibC();
 
                         const sub_path = std.fmt.allocPrint(b.allocator, "{s}.node", .{entry.name}) catch |err| {
                             std.log.info("{s}", .{@errorName(err)});
@@ -57,7 +57,7 @@ pub fn build(b: *std.Build) void {
 
                         build_mods_step.dependOn(
                             &b.addInstallArtifact(
-                                mod,
+                                lib,
                                 .{
                                     // custom dir is relative to ./zig-out
                                     .dest_dir = .{ .override = .{
