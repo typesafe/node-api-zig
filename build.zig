@@ -17,9 +17,8 @@ pub fn build(b: *std.Build) void {
 
     node_api.addSystemIncludePath(node_api_headers.path("include"));
 
-    const install_step = b.getInstallStep();
-
     // zig build (test modules)
+    const build_mods_step = b.step("test-modules", "build native zig modules");
     {
         var dir = std.fs.cwd().openDir("tests/zig_modules", .{ .iterate = true }) catch unreachable;
         defer dir.close();
@@ -53,7 +52,7 @@ pub fn build(b: *std.Build) void {
                     };
                     std.log.info("sub path: {s}", .{sub_path});
 
-                    install_step.dependOn(
+                    build_mods_step.dependOn(
                         &b.addInstallArtifact(
                             mod,
                             .{
@@ -73,13 +72,13 @@ pub fn build(b: *std.Build) void {
     }
 
     // `zig build test`
+    const test_step = b.step("test", "test bindings");
     {
         const run_cmd = b.addSystemCommand(&.{"bun"});
         run_cmd.addArg("test");
         run_cmd.cwd = .{ .cwd_relative = "tests" };
-        run_cmd.step.dependOn(install_step);
+        run_cmd.step.dependOn(build_mods_step);
 
-        const test_step = b.step("test", "test bindings");
         test_step.dependOn(&run_cmd.step);
     }
 }

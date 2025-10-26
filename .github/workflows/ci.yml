@@ -49,7 +49,7 @@ jobs:
         working-directory: tests
 
       - name: Build Zig project
-        run: zig build
+        run: zig build test-modules
 
       - name: Run tests
         run: bun test --reporter=junit --reporter-outfile=test-results.xml
