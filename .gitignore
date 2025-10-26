@@ -3,4 +3,6 @@ tmp
 zig-out/
 *.o
 
+node_modules
+
 tests/node_modules/node-api-test-module/zig-module.node
