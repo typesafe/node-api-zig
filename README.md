@@ -1,77 +1,33 @@
-The `node-api` Zig package provides [Node-API](https://nodejs.org/api/n-api.html) bindings for writing idiomatic Zig addons for V8-based runtimes like Node.JS or Bun.
-Thanks to its conventions-based approach it bridges the gap seamlessly, with almost no Node-API specific code!
+The `node-api` module provides [Node-API](https://nodejs.org/api/n-api.html) bindings for writing idiomatic Zig addons
+for V8-based runtimes like Node.JS or Bun. Thanks to its conventions-based approach it bridges the gap seamlessly, 
+with almost no Node-API specific code!
 
 ![build-badge](https://img.shields.io/github/actions/workflow/status/typesafe/node-api-zig/ci.yml)
 ![test-badge](https://img.shields.io/endpoint?url=https%3A%2F%2Fgist.githubusercontent.com%2Ftypesafe%2F26882516c7ac38bf94a81784f966bd86%2Fraw%2Fnode-api-zig-test-badge.json)
 
-## Features
+## Key Features
 
 - **function mapping**, including async support (auto-conversion to Promises)
-- **class mapping**, incl. support for fields, instance (async) methods, satic (async) methods.
-- **auto-wrapping** of native objects instances, similar to defining classes but for instances created in native Zig code
+- **class mapping**, incl. support for fields, instance (async) methods and satic (async) methods.
+- **wrapping/unwrapping** of native objects instances
 - **memory management** with convention-based `init`, `deinit` support & `allocator` injection
-- `errorunion` support
-- mapping JS values
-  - by value: through (de)serialization or various types
-  - by reference
+- **error handling** with `errorunion` support
+- Convention-base **type conversion**
+  - **by value**: through (de)serialization or various types with automatic memory management
+  - **by reference**:
     - Zig-managed values: through pointers to (wrapped) native Zig values
     - JS-managed values: through wrappers types (`NodeValue` et.al.) for read/write
-  - typesafe callbacks: `NodeFunction(fn (u32, u32) !u32)`
+  - **type-safe callbacks**: `NodeFunction(fn (u32, u32) !u32)`
 
-## Example
-
-```zig
-const node_api = @import("node-api");
-const Options = @import("Options");
-
-comptime {
-    // or node_api.init(fn (node) NodeValue) for runtime values
-    node_api.@"export"(encrypt);
-}
-
-fn encrypt(value: []const u8, options: Options, allocator: std.mem.Allocator) ![]const u8 {
-    const res = allocator.alloc(u8, 123);
-    errdefer allocator.free(res);
-
-    // ...
-
-    return res; // freed by node-api
-}
-
-```
-
-```TypeScript
-import { createRequire } from "module";
-const require = createRequire(import.meta.url);
-
-const encrypt = require("zig-module.node");
-
-// call zig function
-const m = encrypt("secret", { salt: "..."});
-
-```
-
-TODO:
-
-- [ ] auto-register class for members of type `type`.
-- [ ] Make `NodeFunction` thread safe by convention when it is used in an async function/method.
-- [ ] Add `NodeObject` for "by reference" access to JS objects from Zig
-- [ ] Add `NodeArray` for "by reference" access to JS objects from Zig
-- [ ] Add support for externals
-  - [ ] `External`
-  - [ ] `ExternalBuffer`
-  - [ ] `ExternalArrayBuffer`
-- [ ] Use `Result(T, E)` as alternative to `errorunion`s for improved error messages.
-
-# Getting started
+## Getting started
 
 Install the `node_api` (note the underscore) dependency
 
 ```sh
-> zig fetch --save https://github.com/typesafe/node-api-zig/archive/refs/tags/v0.0.3-beta.tar.gz
+> zig fetch --save https://github.com/typesafe/node-api-zig/archive/refs/tags/v0.0.4-beta.tar.gz
 ```
 
-Add the `node-api` (note the hyphen) module to your library.
+Add the `node-api` module to your library:
 
 ```zig
 const std = @import("std");
@@ -90,9 +46,9 @@ pub fn build(b: *std.Build) void {
     mod.addImport("node-api", node_api.module("node-api"));
 
     const lib = b.addLibrary(.{
-        // needed on Linux
+        // if Linux
         .use_llvm = true,
-        .name = "my-native-node-library",
+        .name = "my-native-node-module",
         .root_module = mod,
     });
 
@@ -103,21 +59,53 @@ pub fn build(b: *std.Build) void {
 Initialize your Node-API extension:
 
 ```zig
-const std = @import("std");
-const node = @import("node-api");
+const node_api = @import("node-api");
 
 comptime {
-    node.@"export"(.{
-      // functions, types (for classes), values
-     });
+    // export encrypt function (or types, or values or pointers)
+    node_api.@"export"(.{ 
+      .encrypt = encrypt,
+      // ...
+    });
+}
+
+fn encrypt(
+    // serialized from JS string, borrowed memory
+    value: []const u8,
+    // serialized from JS object by value (use *Options for wrapped native instances)
+    options: Options,
+    // "injected" by convention, any memory allocated with it is freed after returning to JS
+    allocator: std.mem.Allocator,
+) ![]const u8 {
+    const res = allocator.alloc(u8, 123);
+
+    // ...
+
+    return res; // freed by node-api
 }
 ```
 
-# Features
+Use your library as node module:
 
-## Initialize Module
+```TypeScript
+import { createRequire } from "module";
+const require = createRequire(import.meta.url);
 
-Call the `node_api.register` method at compile time:
+const { encrypt } = require("my-native-node-module.node");
+
+const m = encrypt("secret", { salt: "..." });
+
+```
+
+## Features
+
+### Module Initialization
+
+There are 2 options to initialize a module:
+
+- `node_api.@"export"`: conveniant for exporting comptime values, which is very likely
+- `node_api.init(fn (node: NodeContext) !NodeValue)`: for exporting runtime values
+
 
 ```Zig
 comptime {
@@ -129,10 +117,11 @@ fn init(node: node_api.NodeContext) !?node_api.NodeValue {
 }
 ```
 
-```TypeScript
-// `fromZig` = return value of `init` above.
-import fromZig from(zig-module.node);
-```
+### NodeContext
+
+The `node_api.init` initialization function as well as any 
+
+
 
 ## Type Conversions
 
