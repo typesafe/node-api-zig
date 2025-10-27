@@ -11,7 +11,7 @@ comptime {
     node_api.init(init);
 }
 
-fn init(node: node_api.NodeContext) !?node_api.NodeValue {
+fn init(node: node_api.NodeContext) !node_api.NodeValue {
     const ptr = try std.heap.c_allocator.create(WrapTarget);
     ptr.* = .{ .foo = 123, .bar = "hopla" };
 

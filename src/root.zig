@@ -61,7 +61,7 @@ pub fn @"export"(comptime value: anytype) void {
 /// ```
 pub fn init(comptime f: InitFunction) void {
     const module = opaque {
-        pub fn napi_register_module_v1(env: c.napi_env, exp: c.napi_value) callconv(.c) c.napi_value {
+        pub fn napi_register_module_v1(env: c.napi_env, _: c.napi_value) callconv(.c) c.napi_value {
             const node = NodeContext.init(env);
 
             const exports = f(node) catch |err| {
@@ -69,7 +69,7 @@ pub fn init(comptime f: InitFunction) void {
                 return null;
             };
 
-            return if (exports) |v| v.napi_value else exp;
+            return exports.napi_value;
         }
     };
 
@@ -79,7 +79,7 @@ pub fn init(comptime f: InitFunction) void {
 /// The InitFunction to pass to the `register` method. The `ctx` parameter
 /// represents the Node context. The returned value becomes the `exports` value
 /// of the JS module.
-pub const InitFunction = fn (ctx: NodeContext) anyerror!?NodeValue;
+pub const InitFunction = fn (ctx: NodeContext) anyerror!NodeValue;
 
 inline fn registerModule(comptime ptr: *const anyopaque) void {
     @export(ptr, .{ .name = "napi_register_module_v1" });
